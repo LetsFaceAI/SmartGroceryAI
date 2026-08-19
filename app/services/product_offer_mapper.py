@@ -6,6 +6,7 @@ without forcing comparison, planning, or AI code to understand that external sha
 """
 
 from collections.abc import Mapping
+from typing import cast
 
 from pydantic import ValidationError
 
@@ -90,29 +91,39 @@ def _map_promotion_status(raw_offer: Mapping[str, object]) -> PromotionStatus | 
     return PromotionStatus.SALE if sale_flag else PromotionStatus.REGULAR
 
 
-def map_product_offer(raw_offer: Mapping[str, object]) -> ProductOffer:
+def map_product_offer(raw_offer: object) -> ProductOffer:
     """Convert a raw external flyer mapping into a validated product offer.
 
     Args:
-        raw_offer: Dictionary-like external data using the keys in ``RAW_FIELD_MAP``.
+        raw_offer: External data expected to be a dictionary-like mapping using the
+            keys in ``RAW_FIELD_MAP``.
 
     Returns:
         A normalized and validated ``ProductOffer``.
 
     Raises:
         ProductOfferMappingError: If required fields are missing, values fail schema
-            validation, or a supported raw field has an invalid representation.
+            validation, the top-level value is not a mapping, or a supported raw
+            field has an invalid representation.
     """
+    if not isinstance(raw_offer, Mapping):
+        raise ProductOfferMappingError(
+            "Raw product offer must be a dictionary-like mapping."
+        )
+
+    # External values are untyped at runtime. After confirming the container shape,
+    # use a narrow mapping type for the explicit string-key lookups below.
+    raw_mapping = cast(Mapping[str, object], raw_offer)
     mapped_offer = {
-        target_field: raw_offer[raw_field]
+        target_field: raw_mapping[raw_field]
         for raw_field, target_field in RAW_FIELD_MAP.items()
-        if raw_field in raw_offer
+        if raw_field in raw_mapping
     }
 
     if "unit" in mapped_offer:
         mapped_offer["unit"] = _normalize_unit(mapped_offer["unit"])
 
-    promotion_status = _map_promotion_status(raw_offer)
+    promotion_status = _map_promotion_status(raw_mapping)
     if promotion_status is not None:
         mapped_offer["promotion_status"] = promotion_status
 
