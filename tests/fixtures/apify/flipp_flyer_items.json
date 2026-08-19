@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "itemId": "flipp-cantaloupe-001",
+      "name": "Whole Cantaloupe",
+      "brand": "Fresh Market",
+      "currentPrice": "2.99",
+      "originalPrice": "3.99",
+      "priceQualifier": "each",
+      "saleStory": "Save $1.00",
+      "merchantName": "Example Grocer",
+      "validFrom": "2026-08-20",
+      "validTo": "2026-08-26",
+      "sourceUrl": "https://example.invalid/flyer/cantaloupe",
+      "itemType": "flyer"
+    },
+    {
+      "itemId": "flipp-eggs-002",
+      "name": "Large Eggs",
+      "currentPrice": "4.49",
+      "merchantName": "Neighbourhood Market",
+      "itemType": "flyer"
+    }
+  ]
+}

@@ -6,7 +6,9 @@ must make any later retry as a separate, explicit decision.
 """
 
 import asyncio
+from uuid import uuid4
 
+from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -86,7 +88,16 @@ async def search_raw_flyer_offers(
         async with asyncio.timeout(resolved_timeout):
             tools = await discover_apify_mcp_tools(resolved_client)
             flyer_tool = _find_flyer_tool(tools)
-            raw_response = await flyer_tool.ainvoke(request.to_tool_input())
+            # A ToolCall envelope asks LangChain to return a ToolMessage. Unlike a
+            # plain argument dictionary, ToolMessage preserves the MCP structured
+            # artifact alongside display text so downstream code need not scrape a
+            # human-readable Actor summary.
+            tool_call = ToolCall(
+                name=flyer_tool.name,
+                args=request.to_tool_input(),
+                id=uuid4().hex,
+            )
+            raw_response = await flyer_tool.ainvoke(tool_call)
     except TimeoutError as exc:
         logger.error(
             "Raw flyer search timed out tool=%s timeout_seconds=%s",

@@ -55,18 +55,19 @@ async def test_search_raw_flyer_offers_invokes_expected_tool_once() -> None:
     assert isinstance(result, RawFlyerSearchResult)
     assert result.raw_response is raw_response
     discovery.assert_awaited_once()
-    tool.ainvoke.assert_awaited_once_with(
-        {
-            "mode": "search",
-            "postalCode": "M5V 3A8",
-            "query": "milk",
-            "itemType": "flyer",
-            "sortBy": "relevancy",
-            "includeRelatedItems": False,
-            "includeCoupons": False,
-            "maxItems": 1,
-        }
-    )
+    tool_call = tool.ainvoke.await_args.args[0]
+    assert tool_call["name"] == FLIPP_FLYER_TOOL_NAME
+    assert isinstance(tool_call["id"], str)
+    assert tool_call["args"] == {
+        "mode": "search",
+        "postalCode": "M5V 3A8",
+        "query": "milk",
+        "itemType": "flyer",
+        "sortBy": "relevancy",
+        "includeRelatedItems": False,
+        "includeCoupons": False,
+        "maxItems": 1,
+    }
 
 
 @pytest.mark.anyio
