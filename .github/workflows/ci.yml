@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# The workflow only reads repository contents; it does not publish or deploy anything.
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Tests and code quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          # Match the local project tool version and invalidate the cache when the
+          # committed lock file changes.
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+
+      - name: Run tests
+        run: uv run pytest --junitxml=reports/pytest.xml
+
+      # Upload the report even when tests fail so the failure details remain
+      # downloadable from the workflow run.
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-report
+          path: reports/pytest.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Check formatting with Ruff
+        run: uv run ruff format --check .
+
+      - name: Type-check application
+        run: uv run mypy app
