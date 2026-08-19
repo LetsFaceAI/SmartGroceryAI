@@ -8,20 +8,43 @@ no knowledge of any specific data provider.
 
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Decimal preserves exact base-10 prices. The aliases also document the precision
 # accepted at this normalized boundary instead of repeating constraints per field.
 Money = Annotated[
     Decimal,
-    Field(ge=Decimal("0.00"), max_digits=10, decimal_places=2),
+    Field(gt=Decimal("0.00"), max_digits=10, decimal_places=2),
 ]
 PackageAmount = Annotated[
     Decimal,
     Field(gt=Decimal("0"), max_digits=10, decimal_places=3),
 ]
+
+
+class PromotionStatus(StrEnum):
+    """Describe whether pricing is regular, promotional, or unavailable."""
+
+    UNKNOWN = "unknown"
+    REGULAR = "regular"
+    SALE = "sale"
+
+
+class MeasurementUnit(StrEnum):
+    """Provide a small normalized vocabulary for common grocery package units."""
+
+    EACH = "each"
+    COUNT = "count"
+    PACK = "pack"
+    GRAM = "g"
+    KILOGRAM = "kg"
+    MILLILITRE = "mL"
+    LITRE = "L"
+    OUNCE = "oz"
+    POUND = "lb"
 
 
 class ProductOffer(BaseModel):
@@ -67,16 +90,13 @@ class ProductOffer(BaseModel):
         default=None,
         description="Optional numeric package amount, such as 4 for a four-litre bag.",
     )
-    unit: str | None = Field(
+    unit: MeasurementUnit | None = Field(
         default=None,
-        min_length=1,
-        max_length=30,
-        description="Optional package unit such as L, kg, g, or count.",
+        description="Optional normalized package measurement unit.",
     )
-    # None distinguishes missing flyer metadata from an explicit regular-price offer.
-    is_on_sale: bool | None = Field(
-        default=None,
-        description="True for a sale, false for regular price, or null when unknown.",
+    promotion_status: PromotionStatus = Field(
+        default=PromotionStatus.UNKNOWN,
+        description="Whether the offer is a sale, regular price, or unknown.",
     )
     valid_from: date | None = Field(
         default=None,
@@ -92,6 +112,14 @@ class ProductOffer(BaseModel):
         description="Provider name, record identifier, or URL used for provenance.",
     )
 
+    @field_validator("unit", "promotion_status", mode="before")
+    @classmethod
+    def normalize_enum_text(cls, value: object) -> object:
+        """Trim raw enum strings before matching their normalized values."""
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
     @model_validator(mode="after")
     def validate_offer_consistency(self) -> Self:
         """Reject contradictory price and validity-window combinations."""
@@ -102,13 +130,23 @@ class ProductOffer(BaseModel):
         ):
             raise ValueError("valid_until cannot be earlier than valid_from.")
 
+        if self.regular_price is None:
+            return self
+
         if (
-            self.is_on_sale is True
-            and self.regular_price is not None
-            and self.price > self.regular_price
+            self.promotion_status is PromotionStatus.SALE
+            and self.price >= self.regular_price
         ):
             raise ValueError(
-                "A sale price cannot be greater than the supplied regular price."
+                "A sale price must be lower than the supplied regular price."
+            )
+
+        if (
+            self.promotion_status is PromotionStatus.REGULAR
+            and self.price != self.regular_price
+        ):
+            raise ValueError(
+                "Regular-status price must equal the supplied regular price."
             )
 
         return self

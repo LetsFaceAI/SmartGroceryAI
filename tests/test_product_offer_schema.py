@@ -6,7 +6,11 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.product_offer import ProductOffer
+from app.schemas.product_offer import (
+    MeasurementUnit,
+    ProductOffer,
+    PromotionStatus,
+)
 
 
 def test_product_offer_accepts_complete_valid_data() -> None:
@@ -23,7 +27,7 @@ def test_product_offer_accepts_complete_valid_data() -> None:
             "currency": "CAD",
             "package_size": "4",
             "unit": " L ",
-            "is_on_sale": True,
+            "promotion_status": "sale",
             "valid_from": "2026-08-20",
             "valid_until": "2026-08-26",
             "source": "flipp-flyer-record-123",
@@ -36,8 +40,8 @@ def test_product_offer_accepts_complete_valid_data() -> None:
     assert offer.price == Decimal("4.99")
     assert offer.regular_price == Decimal("5.79")
     assert offer.package_size == Decimal("4")
-    assert offer.unit == "L"
-    assert offer.is_on_sale is True
+    assert offer.unit is MeasurementUnit.LITRE
+    assert offer.promotion_status is PromotionStatus.SALE
     assert offer.valid_from == date(2026, 8, 20)
     assert offer.valid_until == date(2026, 8, 26)
 
@@ -56,7 +60,7 @@ def test_product_offer_accepts_partial_flyer_data() -> None:
     assert offer.currency == "CAD"
     assert offer.package_size is None
     assert offer.unit is None
-    assert offer.is_on_sale is None
+    assert offer.promotion_status is PromotionStatus.UNKNOWN
     assert offer.valid_from is None
     assert offer.valid_until is None
 
@@ -71,6 +75,15 @@ def test_product_offer_accepts_partial_flyer_data() -> None:
         (
             {"product_name": "Milk", "store": " ", "price": "1.99", "source": "x"},
             "store",
+        ),
+        (
+            {
+                "product_name": "Milk",
+                "store": "Market",
+                "price": "0.00",
+                "source": "x",
+            },
+            "price",
         ),
         (
             {
@@ -115,6 +128,15 @@ def test_product_offer_accepts_partial_flyer_data() -> None:
                 "product_name": "Milk",
                 "store": "Market",
                 "price": "1.99",
+                "source": " ",
+            },
+            "source",
+        ),
+        (
+            {
+                "product_name": "Milk",
+                "store": "Market",
+                "price": "1.99",
                 "source": "x",
                 "unexpected": "value",
             },
@@ -134,6 +156,32 @@ def test_product_offer_rejects_invalid_fields(
     assert invalid_field in error_locations
 
 
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("promotion_status", "discounted"),
+        ("unit", "litres"),
+    ],
+)
+def test_product_offer_rejects_unknown_enum_values(
+    field_name: str,
+    invalid_value: str,
+) -> None:
+    """Normalized status and unit fields should accept only supported enum values."""
+    offer_data: dict[str, object] = {
+        "product_name": "Milk",
+        "store": "Market",
+        "price": "3.99",
+        "source": "weekly-flyer",
+        field_name: invalid_value,
+    }
+
+    with pytest.raises(ValidationError) as error_info:
+        ProductOffer.model_validate(offer_data)
+
+    assert error_info.value.errors()[0]["loc"] == (field_name,)
+
+
 def test_product_offer_rejects_reversed_validity_window() -> None:
     """An offer cannot expire before its advertised start date."""
     with pytest.raises(ValidationError, match="valid_until"):
@@ -149,16 +197,34 @@ def test_product_offer_rejects_reversed_validity_window() -> None:
         )
 
 
-def test_product_offer_rejects_sale_price_above_regular_price() -> None:
-    """Known sale pricing should not contradict the supplied regular price."""
+@pytest.mark.parametrize("sale_price", ["3.99", "4.99"])
+def test_product_offer_rejects_invalid_sale_price_relationship(
+    sale_price: str,
+) -> None:
+    """Sale pricing must be strictly lower than a supplied regular price."""
     with pytest.raises(ValidationError, match="sale price"):
         ProductOffer.model_validate(
             {
                 "product_name": "Eggs",
                 "store": "Market",
-                "price": "4.99",
+                "price": sale_price,
                 "regular_price": "3.99",
-                "is_on_sale": True,
+                "promotion_status": "sale",
+                "source": "weekly-flyer",
+            }
+        )
+
+
+def test_product_offer_rejects_mismatched_regular_status_price() -> None:
+    """Regular status should not accompany two different current price values."""
+    with pytest.raises(ValidationError, match="Regular-status"):
+        ProductOffer.model_validate(
+            {
+                "product_name": "Eggs",
+                "store": "Market",
+                "price": "3.49",
+                "regular_price": "3.99",
+                "promotion_status": "regular",
                 "source": "weekly-flyer",
             }
         )
