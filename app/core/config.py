@@ -1,4 +1,10 @@
-"""Environment-based application configuration."""
+"""Central, environment-based configuration for SmartGroceryAI.
+
+Pydantic Settings reads operating-system environment variables and an optional
+local ``.env`` file, applies defaults, and validates the final values. Application
+code should use :func:`get_settings` instead of reading environment variables
+directly so configuration remains consistent and easy to extend.
+"""
 
 from functools import lru_cache
 from typing import Literal
@@ -8,8 +14,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Validated settings loaded from environment variables or a local .env file."""
+    """Define every supported application setting and its validation rules.
 
+    Python attributes use snake_case, while ``validation_alias`` documents the
+    corresponding uppercase environment-variable name.
+    """
+
+    # Environment variables take precedence over values in .env. Unknown .env
+    # entries are ignored so one shared file can later contain service settings.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -18,15 +30,18 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    # A non-empty display name is useful in logs and future API metadata.
     app_name: str = Field(
         default="SmartGroceryAI",
         min_length=1,
         validation_alias="APP_NAME",
     )
+    # Restrict environments to known deployment stages to catch typing mistakes.
     app_env: Literal["development", "test", "staging", "production"] = Field(
         default="development",
         validation_alias="APP_ENV",
     )
+    # Accept only levels supported by Python's standard logging package.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
         validation_alias="LOG_LEVEL",
@@ -35,5 +50,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return one settings instance for the lifetime of the process."""
+    """Load and cache the validated application settings.
+
+    Reading configuration once keeps every caller consistent and avoids repeatedly
+    parsing the environment. Tests that change environment variables can call
+    ``get_settings.cache_clear()`` before requesting a fresh instance.
+    """
     return Settings()
