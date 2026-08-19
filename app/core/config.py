@@ -71,6 +71,14 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="APIFY_API_TOKEN",
     )
+    # Bound one discovery-plus-execution attempt. The application never retries a
+    # paid Actor call automatically, even when this client-side timeout expires.
+    apify_mcp_tool_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        le=600,
+        validation_alias="APIFY_MCP_TOOL_TIMEOUT_SECONDS",
+    )
 
     @field_validator("apify_mcp_server_url")
     @classmethod

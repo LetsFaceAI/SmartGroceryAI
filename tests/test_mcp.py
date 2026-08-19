@@ -14,10 +14,20 @@ from app.core.mcp import (
 )
 
 
+def make_settings_without_env(settings_data: dict[str, object]) -> Settings:
+    """Build deterministic settings without reading a developer's real .env file."""
+    # Pydantic Settings supports _env_file at runtime, but its generated
+    # constructor signature does not expose this test-only option to mypy.
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        **settings_data,  # type: ignore[arg-type]
+    )
+
+
 def test_apify_mcp_server_url_requires_a_valid_http_url() -> None:
     """Malformed endpoint configuration should fail during settings validation."""
     with pytest.raises(ValidationError, match="apify_mcp_server_url"):
-        Settings.model_validate({"apify_mcp_server_url": "not-a-url"})
+        make_settings_without_env({"apify_mcp_server_url": "not-a-url"})
 
 
 @pytest.mark.parametrize(
@@ -32,7 +42,7 @@ def test_apify_mcp_server_url_restricts_where_token_can_be_sent(
 ) -> None:
     """Only Apify's official HTTPS MCP host may receive the API token."""
     with pytest.raises(ValidationError, match="https://mcp.apify.com"):
-        Settings.model_validate({"apify_mcp_server_url": server_url})
+        make_settings_without_env({"apify_mcp_server_url": server_url})
 
 
 @pytest.mark.parametrize(
@@ -57,7 +67,7 @@ def test_create_apify_mcp_client_requires_complete_configuration(
     missing_setting: str,
 ) -> None:
     """Missing connection values should fail before constructing a client."""
-    settings = Settings.model_validate(settings_data)
+    settings = make_settings_without_env(settings_data)
     client_factory = Mock(spec=MultiServerMCPClient)
 
     with pytest.raises(MCPConfigurationError, match=missing_setting):
@@ -71,7 +81,7 @@ def test_create_apify_mcp_client_requires_complete_configuration(
 
 def test_create_apify_mcp_client_builds_streamable_http_configuration() -> None:
     """The factory should pass explicit URL and bearer authentication settings."""
-    settings = Settings.model_validate(
+    settings = make_settings_without_env(
         {
             "apify_mcp_server_url": (
                 "https://mcp.apify.com?tools=example/flipp-flyer-digest"
@@ -95,5 +105,6 @@ def test_create_apify_mcp_client_builds_streamable_http_configuration() -> None:
                 "url": ("https://mcp.apify.com/?tools=example/flipp-flyer-digest"),
                 "headers": {"Authorization": "Bearer test-token"},
             }
-        }
+        },
+        handle_tool_errors=True,
     )
