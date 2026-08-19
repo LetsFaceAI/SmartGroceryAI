@@ -9,7 +9,7 @@ directly so configuration remains consistent and easy to extend.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
         validation_alias="LOG_LEVEL",
+    )
+    # SecretStr masks the credential in logs and object representations. None keeps
+    # non-LLM commands, such as linting and tests, usable without an API account.
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
+    )
+    # The model is configurable so environments can trade off quality, latency,
+    # and cost without changing application code.
+    openai_model: str = Field(
+        default="gpt-5-nano",
+        min_length=1,
+        validation_alias="OPENAI_MODEL",
     )
 
 

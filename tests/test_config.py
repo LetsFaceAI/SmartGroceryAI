@@ -22,6 +22,8 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.app_name, "SmartGroceryAI")
         self.assertEqual(settings.app_env, "development")
         self.assertEqual(settings.log_level, "INFO")
+        self.assertIsNone(settings.openai_api_key)
+        self.assertEqual(settings.openai_model, "gpt-5-nano")
 
 
 if __name__ == "__main__":
