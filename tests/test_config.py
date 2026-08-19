@@ -24,6 +24,8 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.log_level, "INFO")
         self.assertIsNone(settings.openai_api_key)
         self.assertEqual(settings.openai_model, "gpt-5-nano")
+        self.assertIsNone(settings.apify_mcp_server_url)
+        self.assertIsNone(settings.apify_api_token)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ directly so configuration remains consistent and easy to extend.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,6 +58,18 @@ class Settings(BaseSettings):
         default="gpt-5-nano",
         min_length=1,
         validation_alias="OPENAI_MODEL",
+    )
+    # The URL can include Apify's tool allowlist query string, letting deployment
+    # configuration expose only the selected Flipp Actor to the MCP client.
+    apify_mcp_server_url: AnyHttpUrl | None = Field(
+        default=None,
+        validation_alias="APIFY_MCP_SERVER_URL",
+    )
+    # The token is separate from the URL so it is sent in an Authorization header
+    # and remains masked in settings representations and logs.
+    apify_api_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="APIFY_API_TOKEN",
     )
 
 
