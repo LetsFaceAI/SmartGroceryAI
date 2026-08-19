@@ -228,3 +228,18 @@ def test_product_offer_rejects_mismatched_regular_status_price() -> None:
                 "source": "weekly-flyer",
             }
         )
+
+
+def test_product_offer_rejects_unknown_status_price_above_regular_price() -> None:
+    """Unknown promotion data must not permit contradictory price values."""
+    with pytest.raises(ValidationError, match="Unknown-status price"):
+        ProductOffer.model_validate(
+            {
+                "product_name": "Eggs",
+                "store": "Market",
+                "price": "4.99",
+                "regular_price": "3.99",
+                # Omitting promotion_status exercises its UNKNOWN default.
+                "source": "weekly-flyer",
+            }
+        )

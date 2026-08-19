@@ -149,4 +149,12 @@ class ProductOffer(BaseModel):
                 "Regular-status price must equal the supplied regular price."
             )
 
+        if (
+            self.promotion_status is PromotionStatus.UNKNOWN
+            and self.price > self.regular_price
+        ):
+            raise ValueError(
+                "Unknown-status price cannot exceed the supplied regular price."
+            )
+
         return self

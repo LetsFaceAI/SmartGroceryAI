@@ -6,9 +6,10 @@ on:
   pull_request:
     branches: [main]
 
-# The workflow only reads repository contents; it does not publish or deploy anything.
+# The workflow reads source code and publishes test results as a commit check.
 permissions:
   contents: read
+  checks: write
 
 jobs:
   quality:
@@ -39,6 +40,15 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --junitxml=reports/pytest.xml
+
+      # Convert pytest's JUnit XML into a browsable check and job summary. Disabling
+      # PR comments keeps the required GitHub token permissions narrowly scoped.
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
+        with:
+          files: reports/pytest.xml
+          comment_mode: off
 
       # Upload the report even when tests fail so the failure details remain
       # downloadable from the workflow run.

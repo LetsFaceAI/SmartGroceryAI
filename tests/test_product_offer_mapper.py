@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.product_offer import (
     MeasurementUnit,
@@ -124,3 +125,21 @@ def test_map_product_offer_rejects_non_boolean_sale_flag() -> None:
                 "source": "flyer",
             }
         )
+
+
+def test_map_product_offer_rejects_unknown_status_price_above_regular() -> None:
+    """An omitted sale flag must not bypass the schema's price relationship."""
+    with pytest.raises(ProductOfferMappingError, match="offer") as error_info:
+        map_product_offer(
+            {
+                "product": "Eggs",
+                "store": "Market",
+                "price": "4.99",
+                "regularPrice": "3.99",
+                # Omitting onSale causes the mapper to use UNKNOWN status.
+                "source": "weekly-flyer",
+            }
+        )
+
+    assert isinstance(error_info.value.__cause__, ValidationError)
+    assert "Unknown-status price" in str(error_info.value.__cause__)
