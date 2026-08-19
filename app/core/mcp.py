@@ -55,7 +55,8 @@ def create_apify_mcp_client(
             "the selected Flipp Actor to your .env file."
         )
 
-    if api_token is None or not api_token.get_secret_value().strip():
+    token_value = api_token.get_secret_value().strip() if api_token else ""
+    if not token_value:
         raise MCPConfigurationError(
             "APIFY_API_TOKEN is not configured. Add an Apify API token to your "
             ".env file before creating the MCP client."
@@ -65,7 +66,7 @@ def create_apify_mcp_client(
         "transport": "streamable_http",
         "url": str(server_url),
         "headers": {
-            "Authorization": f"Bearer {api_token.get_secret_value()}",
+            "Authorization": f"Bearer {token_value}",
         },
     }
     return client_factory({APIFY_FLIPP_SERVER_NAME: connection})

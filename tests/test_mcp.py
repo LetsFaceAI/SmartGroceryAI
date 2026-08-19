@@ -21,6 +21,21 @@ def test_apify_mcp_server_url_requires_a_valid_http_url() -> None:
 
 
 @pytest.mark.parametrize(
+    "server_url",
+    [
+        "http://mcp.apify.com",
+        "https://example.com/mcp",
+    ],
+)
+def test_apify_mcp_server_url_restricts_where_token_can_be_sent(
+    server_url: str,
+) -> None:
+    """Only Apify's official HTTPS MCP host may receive the API token."""
+    with pytest.raises(ValidationError, match="https://mcp.apify.com"):
+        Settings.model_validate({"apify_mcp_server_url": server_url})
+
+
+@pytest.mark.parametrize(
     ("settings_data", "missing_setting"),
     [
         ({"apify_api_token": "test-token"}, "APIFY_MCP_SERVER_URL"),
@@ -61,7 +76,7 @@ def test_create_apify_mcp_client_builds_streamable_http_configuration() -> None:
             "apify_mcp_server_url": (
                 "https://mcp.apify.com?tools=example/flipp-flyer-digest"
             ),
-            "apify_api_token": "test-token",
+            "apify_api_token": "  test-token  ",
         }
     )
     expected_client = Mock(spec=MultiServerMCPClient)

@@ -9,7 +9,7 @@ directly so configuration remains consistent and easy to extend.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,6 +71,24 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="APIFY_API_TOKEN",
     )
+
+    @field_validator("apify_mcp_server_url")
+    @classmethod
+    def validate_apify_mcp_server_url(
+        cls,
+        value: AnyHttpUrl | None,
+    ) -> AnyHttpUrl | None:
+        """Keep the Apify credential restricted to its official HTTPS endpoint.
+
+        The discovery client attaches ``APIFY_API_TOKEN`` to this URL. Restricting
+        the scheme and host prevents a configuration mistake from forwarding that
+        credential to an unrelated server.
+        """
+        if value is not None and (
+            value.scheme != "https" or value.host != "mcp.apify.com"
+        ):
+            raise ValueError("APIFY_MCP_SERVER_URL must use https://mcp.apify.com.")
+        return value
 
 
 @lru_cache
