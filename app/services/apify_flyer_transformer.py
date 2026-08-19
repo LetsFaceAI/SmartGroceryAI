@@ -19,6 +19,7 @@ from app.core.mcp import create_apify_mcp_client
 from app.schemas.flyer_search import RawFlyerSearchRequest, RawFlyerSearchResult
 from app.schemas.product_offer import ProductOffer
 from app.services.apify_dataset_reader import (
+    ApifyDatasetReadError,
     extract_default_dataset_id,
     fetch_apify_dataset_items,
 )
@@ -306,14 +307,28 @@ async def search_product_offers(
         timeout_seconds=resolved_timeout,
     )
 
+    records_missing = False
     try:
-        return transform_apify_flyer_result(raw_result)
+        initial_offers = transform_apify_flyer_result(raw_result)
     except MissingFlyerDatasetItemsError:
-        # Only fall back when the Actor response contains no rows. Malformed rows
-        # must fail immediately rather than being hidden by another MCP request.
-        pass
+        records_missing = True
+        initial_offers = []
 
-    dataset_id = extract_default_dataset_id(raw_result.raw_response)
+    if initial_offers:
+        return initial_offers
+
+    # An empty embedded sequence means only that this response carried no rows.
+    # Actor metadata can still point to the dataset where Apify stored them.
+    try:
+        dataset_id = extract_default_dataset_id(raw_result.raw_response)
+    except ApifyDatasetReadError:
+        if records_missing:
+            # Preserve the existing clear failure for an unstructured response;
+            # only an explicitly present empty sequence represents zero offers.
+            raise
+        # A genuinely empty direct sequence without dataset metadata is valid.
+        return []
+
     dataset_response = await fetch_apify_dataset_items(
         dataset_id,
         limit=request.max_items,

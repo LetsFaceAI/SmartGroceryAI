@@ -13,6 +13,13 @@ from urllib.parse import parse_qsl
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Only parameters documented by Apify's hosted MCP server may cross this
+# configuration boundary. An allowlist is safer than trying to enumerate every
+# possible credential-like spelling that must be rejected.
+APIFY_MCP_ALLOWED_QUERY_PARAMETERS = frozenset(
+    {"actors", "telemetry-enabled", "tools", "ui"}
+)
+
 
 class Settings(BaseSettings):
     """Define every supported application setting and its validation rules.
@@ -97,14 +104,30 @@ class Settings(BaseSettings):
             value.scheme != "https" or value.host != "mcp.apify.com"
         ):
             raise ValueError("APIFY_MCP_SERVER_URL must use https://mcp.apify.com.")
-        if value is not None and any(
-            key.casefold() == "token"
-            for key, _ in parse_qsl(value.query or "", keep_blank_values=True)
+        if value is not None and (
+            value.username is not None or value.password is not None
         ):
             raise ValueError(
-                "APIFY_MCP_SERVER_URL must not contain a token; use "
-                "APIFY_API_TOKEN so the credential is sent in the authorization header."
+                "APIFY_MCP_SERVER_URL must not contain credentials; use the "
+                "dedicated APIFY_API_TOKEN setting instead."
             )
+
+        if value is not None:
+            query_parameters = {
+                key
+                for key, _ in parse_qsl(
+                    value.query or "",
+                    keep_blank_values=True,
+                )
+            }
+            if not query_parameters.issubset(APIFY_MCP_ALLOWED_QUERY_PARAMETERS):
+                # Do not include rejected names or values in this message. A
+                # misspelled credential parameter may itself reveal a secret.
+                allowed = ", ".join(sorted(APIFY_MCP_ALLOWED_QUERY_PARAMETERS))
+                raise ValueError(
+                    "APIFY_MCP_SERVER_URL contains an unsupported query parameter. "
+                    f"Allowed parameters: {allowed}."
+                )
         return value
 
 

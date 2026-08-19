@@ -114,6 +114,17 @@ def test_raw_flyer_search_request_rejects_unsupported_postal_code() -> None:
         RawFlyerSearchRequest(query="milk", postal_code="ABC123")
 
 
+@pytest.mark.parametrize("value", ["m5v3a8", "M5V 3A8", "M 5 V 3 A 8"])
+def test_raw_flyer_search_request_normalizes_canadian_postal_code(
+    value: str,
+) -> None:
+    """Equivalent Canadian inputs should produce one stable downstream value."""
+    request = RawFlyerSearchRequest(query="milk", postal_code=value)
+
+    assert request.postal_code == "M5V 3A8"
+    assert request.to_tool_input()["postalCode"] == "M5V 3A8"
+
+
 @pytest.mark.anyio
 async def test_search_raw_flyer_offers_requires_actor_tool() -> None:
     """Supporting Apify tools must not be mistaken for the paid flyer tool."""

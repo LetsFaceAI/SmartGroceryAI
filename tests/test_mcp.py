@@ -1,6 +1,7 @@
 """Unit tests for offline Apify MCP client configuration."""
 
-from unittest.mock import Mock
+import logging
+from unittest.mock import Mock, patch
 
 import pytest
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -45,15 +46,47 @@ def test_apify_mcp_server_url_restricts_where_token_can_be_sent(
         make_settings_without_env({"apify_mcp_server_url": server_url})
 
 
-def test_apify_mcp_server_url_rejects_query_string_token() -> None:
-    """Credentials must remain masked in SecretStr and authorization headers."""
-    with pytest.raises(ValidationError, match="must not contain a token"):
+@pytest.mark.parametrize(
+    "parameter",
+    ["token", "api_token", "access_token", "api-key", "unknown"],
+)
+def test_apify_mcp_server_url_rejects_undocumented_query_parameters(
+    parameter: str,
+) -> None:
+    """An allowlist blocks credential aliases and unknown forwarding behavior."""
+    with pytest.raises(ValidationError, match="unsupported query parameter"):
         make_settings_without_env(
             {
                 "apify_mcp_server_url": (
-                    "https://mcp.apify.com?token=unsafe&actors=example/actor"
+                    f"https://mcp.apify.com?{parameter}=unsafe&actors=example/actor"
                 )
             }
+        )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "actors=example/actor",
+        "tools=actors&ui=false&telemetry-enabled=false",
+    ],
+)
+def test_apify_mcp_server_url_accepts_documented_query_parameters(
+    query: str,
+) -> None:
+    """Deployment may use only Apify's documented hosted-MCP controls."""
+    settings = make_settings_without_env(
+        {"apify_mcp_server_url": f"https://mcp.apify.com?{query}"}
+    )
+
+    assert settings.apify_mcp_server_url is not None
+
+
+def test_apify_mcp_server_url_rejects_user_info_credentials() -> None:
+    """URL authority fields must not provide another path for secrets."""
+    with pytest.raises(ValidationError, match="must not contain credentials"):
+        make_settings_without_env(
+            {"apify_mcp_server_url": "https://user:secret@mcp.apify.com"}
         )
 
 
@@ -120,3 +153,33 @@ def test_create_apify_mcp_client_builds_streamable_http_configuration() -> None:
         },
         handle_tool_errors=True,
     )
+
+
+def test_create_client_sanitizes_settings_validation_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Invalid configuration must not expose Pydantic's rejected input value."""
+    secret = "must-not-leak"
+    try:
+        make_settings_without_env(
+            {"apify_mcp_server_url": (f"https://mcp.apify.com?access_token={secret}")}
+        )
+    except ValidationError as validation_error:
+        settings_error = validation_error
+    else:  # pragma: no cover - protects the test setup itself
+        pytest.fail("Expected invalid fixture configuration.")
+
+    client_factory = Mock(spec=MultiServerMCPClient)
+    with (
+        patch("app.core.mcp.get_settings", side_effect=settings_error),
+        caplog.at_level(logging.ERROR),
+        pytest.raises(MCPConfigurationError) as error,
+    ):
+        create_apify_mcp_client(client_factory=client_factory)
+
+    public_output = f"{error.value}\n{caplog.text}"
+    assert "MCP configuration is invalid" in str(error.value)
+    assert secret not in public_output
+    assert "access_token" not in public_output
+    assert error.value.__cause__ is None
+    client_factory.assert_not_called()

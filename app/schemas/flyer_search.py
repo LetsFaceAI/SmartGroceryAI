@@ -37,20 +37,32 @@ class RawFlyerSearchRequest(BaseModel):
         description="Maximum raw flyer records requested from one Actor run.",
     )
 
-    @field_validator("postal_code")
+    @field_validator("postal_code", mode="before")
     @classmethod
-    def validate_postal_code(cls, value: str) -> str:
-        """Reject unsupported locations before a cost-sensitive Actor invocation."""
-        compact_value = value.replace(" ", "")
+    def normalize_and_validate_postal_code(cls, value: object) -> object:
+        """Return a canonical location before a cost-sensitive Actor invocation.
+
+        This runs before length validation so harmless internal whitespace cannot
+        make an otherwise valid Canadian postal code exceed the field limit.
+        """
+        if not isinstance(value, str):
+            return value
+
+        stripped_value = value.strip()
+        compact_value = re.sub(r"\s+", "", stripped_value)
         is_canadian = bool(
             re.fullmatch(r"[A-Za-z]\d[A-Za-z]\d[A-Za-z]\d", compact_value)
         )
-        is_us = bool(re.fullmatch(r"\d{5}(?:-\d{4})?", value))
+        if is_canadian:
+            uppercase_value = compact_value.upper()
+            return f"{uppercase_value[:3]} {uppercase_value[3:]}"
+
+        is_us = bool(re.fullmatch(r"\d{5}(?:-\d{4})?", stripped_value))
         if not is_canadian and not is_us:
             raise ValueError(
                 "postal_code must be a Canadian postal code or US ZIP code."
             )
-        return value.upper()
+        return stripped_value
 
     def to_tool_input(self) -> dict[str, Any]:
         """Build the explicit Actor payload using its published input field names."""

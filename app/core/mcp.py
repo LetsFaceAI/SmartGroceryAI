@@ -10,10 +10,13 @@ from typing import Protocol
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection
+from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
+from app.core.logging import get_logger
 
 APIFY_FLIPP_SERVER_NAME = "apify_flipp"
+logger = get_logger(__name__)
 
 
 class MCPClientFactory(Protocol):
@@ -55,7 +58,16 @@ def create_apify_mcp_client(
     Raises:
         MCPConfigurationError: If the server URL or Apify token is missing.
     """
-    resolved_settings = settings or get_settings()
+    try:
+        resolved_settings = settings or get_settings()
+    except ValidationError:
+        # Pydantic's default exception text includes the rejected input. Keep
+        # malformed URLs or accidentally pasted credentials out of logs/errors.
+        logger.error("MCP configuration validation failed.")
+        raise MCPConfigurationError(
+            "MCP configuration is invalid. Check the documented Apify MCP settings."
+        ) from None
+
     server_url = resolved_settings.apify_mcp_server_url
     api_token = resolved_settings.apify_api_token
 

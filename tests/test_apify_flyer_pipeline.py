@@ -102,6 +102,41 @@ async def test_pipeline_accepts_missing_optional_flyer_fields() -> None:
 
 
 @pytest.mark.anyio
+async def test_pipeline_uses_normalized_canadian_postal_code() -> None:
+    """The canonical schema value should reach both execution and transformation."""
+    request = RawFlyerSearchRequest(
+        query="fixture query",
+        postal_code="m 5 v 3 a 8",
+    )
+    raw_result = RawFlyerSearchResult(
+        tool_name=ACTOR_TOOL_NAME,
+        request=request,
+        raw_response=load_fixture("pipeline_partial_response.json"),
+    )
+    client = Mock(spec=MultiServerMCPClient)
+
+    with patch(
+        "app.services.apify_flyer_transformer.search_raw_flyer_offers",
+        new=AsyncMock(return_value=raw_result),
+    ) as raw_search:
+        offers = await search_product_offers(
+            request,
+            client=client,
+            timeout_seconds=1,
+        )
+
+    assert request.postal_code == "M5V 3A8"
+    raw_search.assert_awaited_once_with(
+        request,
+        client=client,
+        timeout_seconds=1,
+    )
+    # The fixture has no explicit currency, so CAD proves the transformer used
+    # the normalized Canadian location rather than an unvalidated raw string.
+    assert offers[0].currency == "CAD"
+
+
+@pytest.mark.anyio
 async def test_pipeline_rejects_missing_required_flyer_fields() -> None:
     """Missing store and provenance must fail instead of producing a partial offer."""
     with pytest.raises(

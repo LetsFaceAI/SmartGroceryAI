@@ -197,3 +197,37 @@ async def test_search_product_offers_fetches_referenced_dataset_once() -> None:
         "Whole Cantaloupe",
         "Large Eggs",
     ]
+
+
+@pytest.mark.anyio
+async def test_search_product_offers_falls_back_from_empty_content() -> None:
+    """An empty preview must not hide rows in the referenced Actor dataset."""
+    metadata = load_fixture("pipeline_actor_metadata_response.json")
+    metadata["content"] = []
+    metadata_result = make_result(metadata)
+    dataset_response = load_fixture("flipp_flyer_items.json")
+    client = Mock(spec=MultiServerMCPClient)
+
+    with (
+        patch(
+            "app.services.apify_flyer_transformer.search_raw_flyer_offers",
+            new=AsyncMock(return_value=metadata_result),
+        ),
+        patch(
+            "app.services.apify_flyer_transformer.fetch_apify_dataset_items",
+            new=AsyncMock(return_value=dataset_response),
+        ) as dataset_read,
+    ):
+        offers = await search_product_offers(
+            metadata_result.request,
+            client=client,
+            timeout_seconds=1,
+        )
+
+    dataset_read.assert_awaited_once_with(
+        "fixture-dataset-id",
+        limit=2,
+        client=client,
+        timeout_seconds=1,
+    )
+    assert len(offers) == 2
