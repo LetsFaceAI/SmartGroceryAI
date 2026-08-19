@@ -15,7 +15,9 @@ class SettingsTest(unittest.TestCase):
         # Clear the process environment and disable .env loading so a developer's
         # local configuration cannot make this default-value test nondeterministic.
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
+            # Pydantic Settings supports _env_file at runtime, but its generated
+            # constructor signature does not expose this test-only option to mypy.
+            settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
         self.assertEqual(settings.app_name, "SmartGroceryAI")
         self.assertEqual(settings.app_env, "development")
