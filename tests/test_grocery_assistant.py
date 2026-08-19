@@ -5,7 +5,9 @@ from langchain.messages import HumanMessage, SystemMessage
 
 from app.prompts.grocery_assistant import (
     GROCERY_ASSISTANT_SYSTEM_PROMPT,
+    SHOPPING_REQUEST_EXTRACTION_SYSTEM_PROMPT,
     build_grocery_messages,
+    build_shopping_request_messages,
 )
 
 
@@ -24,3 +26,15 @@ def test_build_grocery_messages_rejects_empty_input() -> None:
     """Empty requests should fail locally instead of reaching a paid model call."""
     with pytest.raises(ValueError, match="cannot be empty"):
         build_grocery_messages("   ")
+
+
+def test_build_shopping_request_messages_adds_extraction_rules() -> None:
+    """Structured extraction should add precise rules without changing user text."""
+    messages = build_shopping_request_messages("  I prefer organic 2% milk.  ")
+
+    assert isinstance(messages[0], SystemMessage)
+    assert messages[0].content == SHOPPING_REQUEST_EXTRACTION_SYSTEM_PROMPT
+    assert "Include only grocery items" in str(messages[0].content)
+    assert "request-wide preferences" in str(messages[0].content)
+    assert isinstance(messages[1], HumanMessage)
+    assert messages[1].content == "I prefer organic 2% milk."
