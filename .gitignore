@@ -6,6 +6,9 @@ __pycache__/
 # Virtual environments
 .venv/
 
+# Project-local uv package cache (configured in uv.toml)
+.uv-cache/
+
 # Test and coverage artifacts
 .pytest_cache/
 .coverage

@@ -15,8 +15,18 @@ dependencies = [
 # requirements of the deployed application.
 dev = [
     "mypy>=2.3.1",
+    "pytest>=9.1.1",
     "ruff>=0.16.3",
 ]
+
+# Pytest looks only in the dedicated tests directory. Strict configuration and
+# marker handling catch misspelled options instead of silently ignoring them.
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+# Make the current flat `app/` package importable when pytest uses its console script.
+pythonpath = ["."]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
 
 # Ruff provides one fast, consistent formatter and linter for the entire project.
 [tool.ruff]

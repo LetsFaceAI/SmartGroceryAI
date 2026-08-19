@@ -1,0 +1,3 @@
+# Keep uv's disposable package cache inside the project so the standard `uv run`
+# commands work even when the machine-level cache directory is unavailable.
+cache-dir = ".uv-cache"
