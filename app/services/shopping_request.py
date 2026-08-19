@@ -11,7 +11,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import ValidationError
 
 from app.core.llm import create_chat_model
-from app.prompts.grocery_assistant import build_grocery_messages
+from app.prompts.grocery_assistant import build_shopping_request_messages
 from app.schemas.shopping import ShoppingRequest
 
 
@@ -46,7 +46,7 @@ def extract_shopping_request(
     """
     # Validate and construct the prompt before creating a model so empty input never
     # reaches an external provider or incurs usage.
-    messages = build_grocery_messages(user_input)
+    messages = build_shopping_request_messages(user_input)
     chat_model = model if model is not None else create_chat_model()
 
     try:

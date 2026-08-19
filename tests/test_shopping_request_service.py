@@ -33,33 +33,72 @@ def make_structured_model_mock(
     return cast(BaseChatModel, model_mock), model_mock, structured_model_mock
 
 
-def test_extract_shopping_request_returns_validated_schema() -> None:
-    """Natural-language input should flow through the bound structured model."""
-    expected_request = ShoppingRequest.model_validate(
-        {
-            "items": [
-                {"name": "milk", "quantity": 2, "unit": "bags"},
-                {"name": "eggs"},
-                {"name": "blueberries"},
-            ]
-        }
-    )
+@pytest.mark.parametrize(
+    ("user_input", "structured_payload"),
+    [
+        pytest.param(
+            "Milk.",
+            {"items": [{"name": "milk"}]},
+            id="single-item",
+        ),
+        pytest.param(
+            "I need milk, eggs, and blueberries.",
+            {
+                "items": [
+                    {"name": "milk"},
+                    {"name": "eggs"},
+                    {"name": "blueberries"},
+                ]
+            },
+            id="multiple-items",
+        ),
+        pytest.param(
+            "I need 3 apples.",
+            {"items": [{"name": "apples", "quantity": 3}]},
+            id="quantity",
+        ),
+        pytest.param(
+            "Add 1.5 kg of potatoes.",
+            {"items": [{"name": "potatoes", "quantity": 1.5, "unit": "kg"}]},
+            id="unit",
+        ),
+        pytest.param(
+            "I prefer organic groceries and need 2% milk.",
+            {
+                "items": [{"name": "milk", "notes": "2%"}],
+                "preferences": ["organic"],
+            },
+            id="preferences-and-item-qualifier",
+        ),
+        pytest.param(
+            "I need some fruit.",
+            {"items": [{"name": "fruit"}]},
+            id="vague-partial-input",
+        ),
+    ],
+)
+def test_extract_shopping_request_handles_focused_inputs(
+    user_input: str,
+    structured_payload: dict[str, object],
+) -> None:
+    """Representative inputs should always cross the service as validated schemas."""
+    expected_request = ShoppingRequest.model_validate(structured_payload)
     model, model_mock, structured_model_mock = make_structured_model_mock(
-        result=expected_request
+        # Returning a raw payload verifies that the service, not only the mocked LLM,
+        # enforces the Pydantic schema before exposing data to callers.
+        result=structured_payload
     )
 
-    result = extract_shopping_request(
-        "I need 2 bags of milk, eggs, and blueberries.",
-        model=model,
-    )
+    result = extract_shopping_request(user_input, model=model)
 
     model_mock.with_structured_output.assert_called_once_with(ShoppingRequest)
     sent_messages = structured_model_mock.invoke.call_args.args[0]
     assert len(sent_messages) == 2
     assert isinstance(sent_messages[0], SystemMessage)
     assert isinstance(sent_messages[1], HumanMessage)
-    assert sent_messages[1].content == ("I need 2 bags of milk, eggs, and blueberries.")
-    assert result is expected_request
+    assert sent_messages[1].content == user_input
+    assert isinstance(result, ShoppingRequest)
+    assert result == expected_request
 
 
 def test_extract_shopping_request_rejects_invalid_structured_data() -> None:
