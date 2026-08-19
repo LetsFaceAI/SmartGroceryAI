@@ -1,0 +1,1 @@
+"""SmartGroceryAI application package."""

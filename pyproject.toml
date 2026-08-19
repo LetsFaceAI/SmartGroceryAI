@@ -1,0 +1,7 @@
+[project]
+name = "smartgroceryai"
+version = "0.1.0"
+description = "An AI-powered grocery deal comparison and shopping-planning application."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
