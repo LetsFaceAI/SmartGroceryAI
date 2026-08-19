@@ -96,6 +96,10 @@ async def search_raw_flyer_offers(
                 name=flyer_tool.name,
                 args=request.to_tool_input(),
                 id=uuid4().hex,
+                # LangChain recognizes the envelope only when this discriminator
+                # is present. Without it, name/args/id are incorrectly forwarded
+                # to Apify as if they were Actor input fields.
+                type="tool_call",
             )
             raw_response = await flyer_tool.ainvoke(tool_call)
     except TimeoutError as exc:

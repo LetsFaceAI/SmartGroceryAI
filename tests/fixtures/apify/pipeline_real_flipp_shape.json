@@ -1,0 +1,19 @@
+{
+  "artifact": {
+    "structured_content": {
+      "items": [
+        {
+          "itemId": "sanitized-live-item",
+          "itemType": "flyer",
+          "name": "LEAN GROUND BEEF FAMILY PACK",
+          "merchantName": "Food Basics",
+          "currentPrice": 5.48,
+          "validFrom": "2026-08-13T04:00:00+00:00",
+          "validTo": "2026-08-20T03:59:59+00:00",
+          "sourceUrl": "https://example.invalid/flipp/ground-beef",
+          "recordType": "search_result"
+        }
+      ]
+    }
+  }
+}

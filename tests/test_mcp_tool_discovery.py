@@ -35,7 +35,7 @@ async def test_discover_apify_mcp_tools_returns_and_logs_tools(
     client = Mock(spec=MultiServerMCPClient)
     client.get_tools = AsyncMock(return_value=[tool])
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         discovered = await discover_apify_mcp_tools(client)
 
     assert discovered == [tool]

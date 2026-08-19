@@ -45,6 +45,18 @@ def test_apify_mcp_server_url_restricts_where_token_can_be_sent(
         make_settings_without_env({"apify_mcp_server_url": server_url})
 
 
+def test_apify_mcp_server_url_rejects_query_string_token() -> None:
+    """Credentials must remain masked in SecretStr and authorization headers."""
+    with pytest.raises(ValidationError, match="must not contain a token"):
+        make_settings_without_env(
+            {
+                "apify_mcp_server_url": (
+                    "https://mcp.apify.com?token=unsafe&actors=example/actor"
+                )
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("settings_data", "missing_setting"),
     [

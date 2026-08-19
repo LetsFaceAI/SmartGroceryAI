@@ -8,13 +8,20 @@ delegates generic field mapping and all business validation to
 import json
 import re
 from collections.abc import Mapping, Sequence
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from app.core.config import get_settings
+from app.core.mcp import create_apify_mcp_client
 from app.schemas.flyer_search import RawFlyerSearchRequest, RawFlyerSearchResult
 from app.schemas.product_offer import ProductOffer
+from app.services.apify_dataset_reader import (
+    extract_default_dataset_id,
+    fetch_apify_dataset_items,
+)
 from app.services.product_offer_mapper import (
     ProductOfferMappingError,
     map_product_offer,
@@ -42,6 +49,10 @@ _RECORD_CONTAINER_KEYS = ("items", "results", "datasetItems", "dataset")
 
 class ApifyFlyerTransformationError(ValueError):
     """Report an MCP response or Flipp record that cannot be safely normalized."""
+
+
+class MissingFlyerDatasetItemsError(ApifyFlyerTransformationError):
+    """Report that an Actor response has metadata but no embedded dataset rows."""
 
 
 def _currency_for_record(record: Mapping[str, object], postal_code: str) -> str:
@@ -77,6 +88,59 @@ def _sale_flag(record: Mapping[str, object]) -> bool | None:
     if current == regular:
         return False
     return None
+
+
+def _parse_flipp_datetime(value: object) -> datetime | None:
+    """Parse an ISO timestamp while leaving date-only and malformed values alone."""
+    if not isinstance(value, str) or "T" not in value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _normalize_flipp_validity_window(mapped: dict[str, object]) -> None:
+    """Convert Flipp's paired UTC boundary timestamps into inclusive dates.
+
+    Flipp represents a local flyer week as UTC instants. For example, a Toronto
+    offer may start at 04:00 UTC and end six days plus 23:59:59 later. Deriving
+    the inclusive end date from that duration avoids incorrectly treating the UTC
+    end timestamp's next-day date as locally valid.
+
+    Date-only strings remain untouched for Pydantic. An isolated timestamp cannot
+    safely establish the provider's local window, so it also remains untouched and
+    fails clearly instead of silently producing a potentially incorrect date.
+    """
+    raw_start = mapped.get("validFrom")
+    raw_end = mapped.get("validUntil")
+    start = _parse_flipp_datetime(raw_start)
+    end = _parse_flipp_datetime(raw_end)
+
+    if start is None or end is None:
+        return
+    if (start.tzinfo is None) != (end.tzinfo is None):
+        # Mixed aware/naive timestamps cannot be compared safely. Leave them for
+        # Pydantic to reject rather than inventing a timezone assumption.
+        return
+
+    start_date: date = start.date()
+    if end >= start:
+        # timedelta.days floors the final partial day. That converts a range ending
+        # at 03:59:59 UTC on the next date into the correct inclusive local date.
+        # Subtracting one microsecond also handles an exclusive exact-midnight end.
+        duration = end - start
+        inclusive_duration = max(
+            duration - timedelta(microseconds=1),
+            timedelta(0),
+        )
+        end_date = start_date + timedelta(days=inclusive_duration.days)
+    else:
+        # Preserve a contradictory order so ProductOffer rejects it deterministically.
+        end_date = end.date()
+
+    mapped["validFrom"] = start_date
+    mapped["validUntil"] = end_date
 
 
 def map_apify_flyer_record(
@@ -118,6 +182,8 @@ def map_apify_flyer_record(
         item_id = record.get("itemId")
         if isinstance(item_id, str) and item_id.strip():
             mapped["source"] = f"apify:flipp:{item_id.strip()}"
+
+    _normalize_flipp_validity_window(mapped)
 
     try:
         return map_product_offer(mapped)
@@ -201,7 +267,7 @@ def transform_apify_flyer_result(
     """Extract and validate all preview records from one raw MCP search result."""
     records = _find_records(result.raw_response)
     if records is None:
-        raise ApifyFlyerTransformationError(
+        raise MissingFlyerDatasetItemsError(
             "The MCP response did not contain structured Flipp dataset items."
         )
 
@@ -227,10 +293,36 @@ async def search_product_offers(
     client: MultiServerMCPClient | None = None,
     timeout_seconds: float | None = None,
 ) -> list[ProductOffer]:
-    """Run the existing bounded raw search once, then validate its preview items."""
+    """Run one Actor search, fetch its bounded dataset output, and validate it."""
+    resolved_client = client or create_apify_mcp_client(handle_tool_errors=False)
+    resolved_timeout = (
+        timeout_seconds
+        if timeout_seconds is not None
+        else get_settings().apify_mcp_tool_timeout_seconds
+    )
     raw_result = await search_raw_flyer_offers(
         request,
-        client=client,
-        timeout_seconds=timeout_seconds,
+        client=resolved_client,
+        timeout_seconds=resolved_timeout,
     )
-    return transform_apify_flyer_result(raw_result)
+
+    try:
+        return transform_apify_flyer_result(raw_result)
+    except MissingFlyerDatasetItemsError:
+        # Only fall back when the Actor response contains no rows. Malformed rows
+        # must fail immediately rather than being hidden by another MCP request.
+        pass
+
+    dataset_id = extract_default_dataset_id(raw_result.raw_response)
+    dataset_response = await fetch_apify_dataset_items(
+        dataset_id,
+        limit=request.max_items,
+        client=resolved_client,
+        timeout_seconds=resolved_timeout,
+    )
+    dataset_result = RawFlyerSearchResult(
+        tool_name=raw_result.tool_name,
+        request=request,
+        raw_response=dataset_response,
+    )
+    return transform_apify_flyer_result(dataset_result)

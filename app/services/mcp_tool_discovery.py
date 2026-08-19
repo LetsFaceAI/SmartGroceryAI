@@ -56,11 +56,12 @@ async def discover_apify_mcp_tools(
         )
 
     for tool in tools:
-        # Names, descriptions, and argument schemas help verify which Actor tools
-        # are exposed. Authentication headers and client configuration are never
-        # included in this log record.
-        logger.info(
-            "Discovered MCP tool name=%s description=%s input_schema=%s",
+        # Names are useful operational context at INFO. Full descriptions and
+        # schemas remain available at DEBUG without flooding normal smoke output.
+        # Authentication headers and client configuration are never logged.
+        logger.info("Discovered MCP tool name=%s", tool.name)
+        logger.debug(
+            "MCP tool details name=%s description=%s input_schema=%s",
             tool.name,
             tool.description,
             tool.args,

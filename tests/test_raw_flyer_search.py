@@ -56,6 +56,9 @@ async def test_search_raw_flyer_offers_invokes_expected_tool_once() -> None:
     assert result.raw_response is raw_response
     discovery.assert_awaited_once()
     tool_call = tool.ainvoke.await_args.args[0]
+    # This discriminator makes LangChain unwrap ``args`` before invoking MCP.
+    # Its absence previously caused Apify to reject the request before a run began.
+    assert tool_call["type"] == "tool_call"
     assert tool_call["name"] == FLIPP_FLYER_TOOL_NAME
     assert isinstance(tool_call["id"], str)
     assert tool_call["args"] == {
@@ -103,6 +106,12 @@ def test_raw_flyer_search_request_enforces_small_result_limit() -> None:
             postal_code="M5V 3A8",
             max_items=6,
         )
+
+
+def test_raw_flyer_search_request_rejects_unsupported_postal_code() -> None:
+    """Invalid geography should fail locally before a paid Actor can start."""
+    with pytest.raises(ValidationError, match="Canadian postal code or US ZIP"):
+        RawFlyerSearchRequest(query="milk", postal_code="ABC123")
 
 
 @pytest.mark.anyio

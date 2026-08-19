@@ -1,6 +1,7 @@
 """Offline contract tests for converting saved Flipp data to ProductOffer."""
 
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -105,6 +106,20 @@ def test_transform_reads_langchain_structured_artifact() -> None:
     ]
 
 
+def test_transform_converts_real_flipp_utc_window_to_inclusive_dates() -> None:
+    """Real Actor timestamps should retain the intended local flyer date range."""
+    offers = transform_apify_flyer_result(
+        make_result(load_fixture("pipeline_real_flipp_shape.json"))
+    )
+
+    offer = offers[0]
+    assert offer.valid_from == date(2026, 8, 13)
+    assert offer.valid_until == date(2026, 8, 19)
+    assert offer.price == Decimal("5.48")
+    assert offer.brand is None
+    assert offer.regular_price is None
+
+
 def test_map_record_rejects_unknown_currency_location() -> None:
     """Currency must not silently default when neither record nor location proves it."""
     record = load_fixture("flipp_flyer_items.json")["items"][0]
@@ -146,3 +161,39 @@ async def test_search_product_offers_reuses_raw_service_without_network() -> Non
         timeout_seconds=1,
     )
     assert len(offers) == 2
+
+
+@pytest.mark.anyio
+async def test_search_product_offers_fetches_referenced_dataset_once() -> None:
+    """Actor metadata should trigger one bounded, read-only dataset follow-up."""
+    metadata_result = make_result(load_fixture("pipeline_actor_metadata_response.json"))
+    dataset_response = load_fixture("flipp_flyer_items.json")
+    client = Mock(spec=MultiServerMCPClient)
+
+    with (
+        patch(
+            "app.services.apify_flyer_transformer.search_raw_flyer_offers",
+            new=AsyncMock(return_value=metadata_result),
+        ) as raw_search,
+        patch(
+            "app.services.apify_flyer_transformer.fetch_apify_dataset_items",
+            new=AsyncMock(return_value=dataset_response),
+        ) as dataset_read,
+    ):
+        offers = await search_product_offers(
+            metadata_result.request,
+            client=client,
+            timeout_seconds=1,
+        )
+
+    raw_search.assert_awaited_once()
+    dataset_read.assert_awaited_once_with(
+        "fixture-dataset-id",
+        limit=2,
+        client=client,
+        timeout_seconds=1,
+    )
+    assert [offer.product_name for offer in offers] == [
+        "Whole Cantaloupe",
+        "Large Eggs",
+    ]

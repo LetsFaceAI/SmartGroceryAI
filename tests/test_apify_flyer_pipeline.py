@@ -9,9 +9,10 @@ import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.schemas.flyer_search import RawFlyerSearchRequest, RawFlyerSearchResult
 from app.schemas.product_offer import ProductOffer, PromotionStatus
@@ -46,18 +47,23 @@ async def run_offline_pipeline(
         request=request,
         raw_response=raw_response,
     )
+    client = Mock(spec=MultiServerMCPClient)
 
     with patch(
         "app.services.apify_flyer_transformer.search_raw_flyer_offers",
         new=AsyncMock(return_value=raw_result),
     ) as raw_search:
-        offers = await search_product_offers(request, timeout_seconds=1)
+        offers = await search_product_offers(
+            request,
+            client=client,
+            timeout_seconds=1,
+        )
 
     # This assertion guards against a future refactor accidentally invoking the
     # cost-sensitive Actor more than once per application request.
     raw_search.assert_awaited_once_with(
         request,
-        client=None,
+        client=client,
         timeout_seconds=1,
     )
     return offers

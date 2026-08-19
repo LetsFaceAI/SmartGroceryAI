@@ -5,9 +5,10 @@ interpret Actor records and validate them as ``ProductOffer`` instances without
 coupling raw MCP execution to application data normalization.
 """
 
+import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_RAW_SEARCH_ITEMS = 5
 
@@ -35,6 +36,21 @@ class RawFlyerSearchRequest(BaseModel):
         le=MAX_RAW_SEARCH_ITEMS,
         description="Maximum raw flyer records requested from one Actor run.",
     )
+
+    @field_validator("postal_code")
+    @classmethod
+    def validate_postal_code(cls, value: str) -> str:
+        """Reject unsupported locations before a cost-sensitive Actor invocation."""
+        compact_value = value.replace(" ", "")
+        is_canadian = bool(
+            re.fullmatch(r"[A-Za-z]\d[A-Za-z]\d[A-Za-z]\d", compact_value)
+        )
+        is_us = bool(re.fullmatch(r"\d{5}(?:-\d{4})?", value))
+        if not is_canadian and not is_us:
+            raise ValueError(
+                "postal_code must be a Canadian postal code or US ZIP code."
+            )
+        return value.upper()
 
     def to_tool_input(self) -> dict[str, Any]:
         """Build the explicit Actor payload using its published input field names."""

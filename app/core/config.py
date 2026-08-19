@@ -8,6 +8,7 @@ directly so configuration remains consistent and easy to extend.
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qsl
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -96,6 +97,14 @@ class Settings(BaseSettings):
             value.scheme != "https" or value.host != "mcp.apify.com"
         ):
             raise ValueError("APIFY_MCP_SERVER_URL must use https://mcp.apify.com.")
+        if value is not None and any(
+            key.casefold() == "token"
+            for key, _ in parse_qsl(value.query or "", keep_blank_values=True)
+        ):
+            raise ValueError(
+                "APIFY_MCP_SERVER_URL must not contain a token; use "
+                "APIFY_API_TOKEN so the credential is sent in the authorization header."
+            )
         return value
 
 
