@@ -1,4 +1,4 @@
-"""Central LangChain chat-model creation and minimal invocation helpers.
+"""Central LangChain chat-model configuration and creation.
 
 Only this module knows which model provider is currently used. Feature code can
 depend on LangChain's provider-neutral ``BaseChatModel`` interface, allowing model
@@ -6,12 +6,10 @@ parameters or providers to change later without spreading construction logic acr
 the application.
 """
 
-from langchain.messages import AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from app.core.config import Settings, get_settings
-from app.prompts.grocery_assistant import build_grocery_messages
 
 
 class LLMConfigurationError(RuntimeError):
@@ -44,35 +42,3 @@ def create_chat_model(settings: Settings | None = None) -> BaseChatModel:
         model=resolved_settings.openai_model,
         api_key=api_key,
     )
-
-
-def send_message(
-    message: str,
-    model: BaseChatModel | None = None,
-) -> AIMessage:
-    """Send one grocery-assistant prompt turn and return its AI response.
-
-    Args:
-        message: Natural-language input to send to the model.
-        model: Optional model instance. The configured model is created when omitted;
-            injection keeps tests offline and supports future model composition.
-
-    Returns:
-        The model's response as a LangChain ``AIMessage`` with content and metadata.
-
-    Raises:
-        LLMConfigurationError: If a model must be created without an API key.
-        TypeError: If a provider returns an unexpected message type.
-    """
-    chat_model = model or create_chat_model()
-    messages = build_grocery_messages(message)
-    response = chat_model.invoke(messages)
-
-    # Chat models should produce AIMessage objects. Keep this boundary explicit so
-    # later code can safely access response metadata, content blocks, and tool calls.
-    if not isinstance(response, AIMessage):
-        raise TypeError(
-            f"Expected an AIMessage response, received {type(response).__name__}."
-        )
-
-    return response

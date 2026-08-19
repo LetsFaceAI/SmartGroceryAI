@@ -1,8 +1,8 @@
 """Prompt and message construction for the grocery-assistant conversation flow.
 
-This module owns what the assistant should do, while ``app.core.llm`` owns how a
-model is configured and invoked. Keeping those responsibilities separate makes
-prompt changes testable without credentials or network access.
+This module owns what the assistant should do, while ``app.core.llm`` owns model
+configuration and the service layer owns invocation. Keeping those responsibilities
+separate makes prompt changes testable without credentials or network access.
 """
 
 from langchain.messages import HumanMessage, SystemMessage
