@@ -1,0 +1,25 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "SUCCEEDED. Preview contains 1 item."
+    }
+  ],
+  "artifact": {
+    "structured_content": {
+      "items": [
+        {
+          "itemId": "pipeline-cantaloupe-001",
+          "name": "Whole Cantaloupe",
+          "brand": "Fresh Market",
+          "merchantName": "Example Grocer",
+          "currentPrice": "2.99",
+          "originalPrice": "3.99",
+          "validFrom": "2026-08-20",
+          "validTo": "2026-08-26",
+          "sourceUrl": "https://example.invalid/flyer/cantaloupe"
+        }
+      ]
+    }
+  }
+}

@@ -131,13 +131,21 @@ def map_product_offer(raw_offer: object) -> ProductOffer:
         return ProductOffer.model_validate(mapped_offer)
     except ValidationError as exc:
         # Summarize normalized field locations for callers while retaining Pydantic's
-        # detailed errors as the exception cause for logs and debugging.
+        # detailed errors as the exception cause for logs and debugging. Root-level
+        # model validators have no field location, so include their message to make
+        # cross-field failures such as invalid date ranges understandable to callers.
         invalid_fields = sorted(
             {
                 str(error["loc"][0]) if error["loc"] else "offer"
                 for error in exc.errors()
             }
         )
+        model_errors = sorted(
+            {str(error["msg"]) for error in exc.errors() if not error["loc"]}
+        )
+        error_summary = ", ".join(invalid_fields)
+        if model_errors:
+            error_summary += " (" + "; ".join(model_errors) + ")"
         raise ProductOfferMappingError(
-            "Invalid raw product offer data for: " + ", ".join(invalid_fields) + "."
+            "Invalid raw product offer data for: " + error_summary + "."
         ) from exc

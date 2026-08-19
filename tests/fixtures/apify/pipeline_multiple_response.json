@@ -1,0 +1,30 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "SUCCEEDED. Preview contains 2 items."
+    }
+  ],
+  "artifact": {
+    "structured_content": {
+      "items": [
+        {
+          "itemId": "pipeline-apples-005",
+          "name": "Gala Apples",
+          "merchantName": "Market One",
+          "currentPrice": "3.97",
+          "sourceUrl": "https://example.invalid/flyer/apples"
+        },
+        {
+          "itemId": "pipeline-bread-006",
+          "name": "Whole Wheat Bread",
+          "brand": "Bakery House",
+          "merchantName": "Market Two",
+          "currentPrice": "2.50",
+          "originalPrice": "3.25",
+          "sourceUrl": "https://example.invalid/flyer/bread"
+        }
+      ]
+    }
+  }
+}

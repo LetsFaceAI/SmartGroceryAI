@@ -1,0 +1,44 @@
+{
+  "invalid_price": {
+    "content": [
+      {
+        "type": "text",
+        "text": "SUCCEEDED. Provider returned an invalid price."
+      }
+    ],
+    "artifact": {
+      "structured_content": {
+        "items": [
+          {
+            "itemId": "pipeline-invalid-price-003",
+            "name": "Blueberries",
+            "merchantName": "Example Grocer",
+            "currentPrice": "-1.00"
+          }
+        ]
+      }
+    }
+  },
+  "invalid_dates": {
+    "content": [
+      {
+        "type": "text",
+        "text": "SUCCEEDED. Provider returned an invalid date range."
+      }
+    ],
+    "artifact": {
+      "structured_content": {
+        "items": [
+          {
+            "itemId": "pipeline-invalid-dates-004",
+            "name": "Organic Milk",
+            "merchantName": "Example Grocer",
+            "currentPrice": "5.49",
+            "validFrom": "2026-08-27",
+            "validTo": "2026-08-20"
+          }
+        ]
+      }
+    }
+  }
+}
