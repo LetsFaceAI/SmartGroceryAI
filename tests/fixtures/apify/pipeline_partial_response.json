@@ -1,0 +1,20 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "SUCCEEDED. Preview contains 1 partial item."
+    }
+  ],
+  "artifact": {
+    "structured_content": {
+      "items": [
+        {
+          "itemId": "pipeline-eggs-002",
+          "name": "Large Eggs",
+          "merchantName": "Neighbourhood Market",
+          "currentPrice": "4.49"
+        }
+      ]
+    }
+  }
+}

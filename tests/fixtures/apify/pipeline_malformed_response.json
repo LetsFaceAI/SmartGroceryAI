@@ -1,0 +1,18 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "SUCCEEDED. Provider returned a malformed item."
+    }
+  ],
+  "artifact": {
+    "structured_content": {
+      "items": [
+        {
+          "name": "Cantaloupe",
+          "currentPrice": "2.99"
+        }
+      ]
+    }
+  }
+}

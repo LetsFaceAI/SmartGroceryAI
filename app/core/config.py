@@ -8,9 +8,17 @@ directly so configuration remains consistent and easy to extend.
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qsl
 
-from pydantic import Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Only parameters documented by Apify's hosted MCP server may cross this
+# configuration boundary. An allowlist is safer than trying to enumerate every
+# possible credential-like spelling that must be rejected.
+APIFY_MCP_ALLOWED_QUERY_PARAMETERS = frozenset(
+    {"actors", "telemetry-enabled", "tools", "ui"}
+)
 
 
 class Settings(BaseSettings):
@@ -59,6 +67,68 @@ class Settings(BaseSettings):
         min_length=1,
         validation_alias="OPENAI_MODEL",
     )
+    # The URL can include Apify's tool allowlist query string, letting deployment
+    # configuration expose only the selected Flipp Actor to the MCP client.
+    apify_mcp_server_url: AnyHttpUrl | None = Field(
+        default=None,
+        validation_alias="APIFY_MCP_SERVER_URL",
+    )
+    # The token is separate from the URL so it is sent in an Authorization header
+    # and remains masked in settings representations and logs.
+    apify_api_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="APIFY_API_TOKEN",
+    )
+    # Bound one discovery-plus-execution attempt. The application never retries a
+    # paid Actor call automatically, even when this client-side timeout expires.
+    apify_mcp_tool_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        le=600,
+        validation_alias="APIFY_MCP_TOOL_TIMEOUT_SECONDS",
+    )
+
+    @field_validator("apify_mcp_server_url")
+    @classmethod
+    def validate_apify_mcp_server_url(
+        cls,
+        value: AnyHttpUrl | None,
+    ) -> AnyHttpUrl | None:
+        """Keep the Apify credential restricted to its official HTTPS endpoint.
+
+        The discovery client attaches ``APIFY_API_TOKEN`` to this URL. Restricting
+        the scheme and host prevents a configuration mistake from forwarding that
+        credential to an unrelated server.
+        """
+        if value is not None and (
+            value.scheme != "https" or value.host != "mcp.apify.com"
+        ):
+            raise ValueError("APIFY_MCP_SERVER_URL must use https://mcp.apify.com.")
+        if value is not None and (
+            value.username is not None or value.password is not None
+        ):
+            raise ValueError(
+                "APIFY_MCP_SERVER_URL must not contain credentials; use the "
+                "dedicated APIFY_API_TOKEN setting instead."
+            )
+
+        if value is not None:
+            query_parameters = {
+                key
+                for key, _ in parse_qsl(
+                    value.query or "",
+                    keep_blank_values=True,
+                )
+            }
+            if not query_parameters.issubset(APIFY_MCP_ALLOWED_QUERY_PARAMETERS):
+                # Do not include rejected names or values in this message. A
+                # misspelled credential parameter may itself reveal a secret.
+                allowed = ", ".join(sorted(APIFY_MCP_ALLOWED_QUERY_PARAMETERS))
+                raise ValueError(
+                    "APIFY_MCP_SERVER_URL contains an unsupported query parameter. "
+                    f"Allowed parameters: {allowed}."
+                )
+        return value
 
 
 @lru_cache

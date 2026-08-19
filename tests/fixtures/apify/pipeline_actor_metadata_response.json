@@ -1,0 +1,24 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "SUCCEEDED in 5.068s. 1 item; 18 fields available."
+    }
+  ],
+  "artifact": {
+    "structured_content": {
+      "runId": "fixture-run-id",
+      "status": "SUCCEEDED",
+      "storages": {
+        "datasets": {
+          "default": {
+            "id": "fixture-dataset-id",
+            "itemCount": 1
+          }
+        }
+      },
+      "summary": "Actor run succeeded.",
+      "nextStep": "Call get-dataset-items with fixture-dataset-id."
+    }
+  }
+}
