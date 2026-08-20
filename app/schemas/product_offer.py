@@ -1,9 +1,9 @@
-"""Normalized product-offer schema for grocery flyer data.
+"""Validated external product-offer schema for grocery flyer data.
 
 External flyer records are often inconsistent or incomplete. ``ProductOffer`` is
-the validated boundary that future Apify/MCP adapters will produce before deal
-comparison, ranking, or AI reasoning uses the data. This module intentionally has
-no knowledge of any specific data provider.
+the validated ingestion boundary that Apify/MCP adapters produce before a separate
+normalization layer prepares offers for comparison, ranking, or AI reasoning. This
+module intentionally has no knowledge of any specific data provider.
 """
 
 from datetime import date
@@ -23,6 +23,7 @@ PackageAmount = Annotated[
     Decimal,
     Field(gt=Decimal("0"), max_digits=10, decimal_places=3),
 ]
+PackageQuantity = Annotated[int, Field(ge=1, le=1_000)]
 
 
 class PromotionStatus(StrEnum):
@@ -48,7 +49,7 @@ class MeasurementUnit(StrEnum):
 
 
 class ProductOffer(BaseModel):
-    """Represent one normalized product offer from a grocery flyer.
+    """Represent one validated external product offer from a grocery flyer.
 
     Product name, store, current price, and source are required because an offer
     cannot be compared or traced without them. Other fields remain optional to
@@ -90,6 +91,10 @@ class ProductOffer(BaseModel):
         default=None,
         description="Optional numeric package amount, such as 4 for a four-litre bag.",
     )
+    package_quantity: PackageQuantity = Field(
+        default=1,
+        description="Number of equal packages; one preserves ordinary package behavior.",
+    )
     unit: MeasurementUnit | None = Field(
         default=None,
         description="Optional normalized package measurement unit.",
@@ -123,6 +128,13 @@ class ProductOffer(BaseModel):
     @model_validator(mode="after")
     def validate_offer_consistency(self) -> Self:
         """Reject contradictory price and validity-window combinations."""
+        if self.package_quantity > 1 and (
+            self.package_size is None or self.unit is None
+        ):
+            raise ValueError(
+                "A multipack quantity requires both package_size and unit."
+            )
+
         if (
             self.valid_from is not None
             and self.valid_until is not None

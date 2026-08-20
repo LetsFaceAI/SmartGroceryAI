@@ -70,6 +70,38 @@ def test_map_product_offer_handles_missing_optional_data() -> None:
     assert offer.valid_until is None
 
 
+def test_map_product_offer_parses_single_embedded_package_size() -> None:
+    """An embedded unit without a multiplier should preserve quantity one."""
+    offer = map_product_offer(
+        {
+            "product": "Coffee",
+            "store": "Market",
+            "price": "8.99",
+            "packageSize": "500 g",
+            "source": "flyer",
+        }
+    )
+
+    assert offer.package_quantity == 1
+    assert offer.package_size == Decimal("500")
+    assert offer.unit is MeasurementUnit.GRAM
+
+
+def test_map_product_offer_rejects_conflicting_embedded_package_data() -> None:
+    """Duplicate package metadata must agree rather than being overwritten."""
+    with pytest.raises(ProductOfferMappingError, match="packageQuantity conflicts"):
+        map_product_offer(
+            {
+                "product": "Coffee",
+                "store": "Market",
+                "price": "8.99",
+                "packageSize": "2 x 500 g",
+                "packageQuantity": 3,
+                "source": "flyer",
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("raw_offer", "expected_error_field"),
     [
