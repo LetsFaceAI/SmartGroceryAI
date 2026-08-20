@@ -10,10 +10,10 @@ from typing import cast
 
 from pydantic import ValidationError
 
-from app.schemas.product_offer import (
-    MeasurementUnit,
-    ProductOffer,
-    PromotionStatus,
+from app.schemas.product_offer import ProductOffer, PromotionStatus
+from app.services.unit_normalization import (
+    UnsupportedMeasurementUnitError,
+    resolve_measurement_unit,
 )
 
 # Field names are mapped explicitly instead of unpacking arbitrary external data into
@@ -33,37 +33,6 @@ RAW_FIELD_MAP: dict[str, str] = {
     "source": "source",
 }
 
-# External sources commonly spell the same unit in several ways. Keep aliases here,
-# not in the core schema, because normalization is an ingestion responsibility.
-UNIT_ALIASES: dict[str, MeasurementUnit] = {
-    "ea": MeasurementUnit.EACH,
-    "each": MeasurementUnit.EACH,
-    "ct": MeasurementUnit.COUNT,
-    "count": MeasurementUnit.COUNT,
-    "pk": MeasurementUnit.PACK,
-    "pack": MeasurementUnit.PACK,
-    "g": MeasurementUnit.GRAM,
-    "gram": MeasurementUnit.GRAM,
-    "grams": MeasurementUnit.GRAM,
-    "kg": MeasurementUnit.KILOGRAM,
-    "kilogram": MeasurementUnit.KILOGRAM,
-    "kilograms": MeasurementUnit.KILOGRAM,
-    "ml": MeasurementUnit.MILLILITRE,
-    "millilitre": MeasurementUnit.MILLILITRE,
-    "millilitres": MeasurementUnit.MILLILITRE,
-    "l": MeasurementUnit.LITRE,
-    "litre": MeasurementUnit.LITRE,
-    "litres": MeasurementUnit.LITRE,
-    "liter": MeasurementUnit.LITRE,
-    "liters": MeasurementUnit.LITRE,
-    "oz": MeasurementUnit.OUNCE,
-    "ounce": MeasurementUnit.OUNCE,
-    "ounces": MeasurementUnit.OUNCE,
-    "lb": MeasurementUnit.POUND,
-    "pound": MeasurementUnit.POUND,
-    "pounds": MeasurementUnit.POUND,
-}
-
 
 class ProductOfferMappingError(ValueError):
     """Report raw flyer data that cannot become a valid product offer."""
@@ -72,8 +41,12 @@ class ProductOfferMappingError(ValueError):
 def _normalize_unit(value: object) -> object:
     """Translate a known unit alias while leaving invalid values for validation."""
     if isinstance(value, str):
-        normalized_value = value.strip()
-        return UNIT_ALIASES.get(normalized_value.casefold(), normalized_value)
+        try:
+            return resolve_measurement_unit(value)
+        except UnsupportedMeasurementUnitError:
+            # The mapper preserves its existing behavior: Pydantic owns the final
+            # external-contract error and reports the invalid ``unit`` field.
+            return value.strip()
     return value
 
 

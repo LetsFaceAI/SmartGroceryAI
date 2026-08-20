@@ -1,6 +1,7 @@
 """Focused tests for conservative deterministic product-name matching."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.normalized_product import NormalizedProduct
 from app.schemas.product_match import ProductMatchResult, ProductMatchType
@@ -101,3 +102,22 @@ def test_match_result_retains_normalized_product() -> None:
     result = match_product("whole milk", product)
 
     assert result.product is product
+
+
+@pytest.mark.parametrize(
+    "contradictory_fields",
+    [
+        {"matched": False, "match_type": ProductMatchType.EXACT},
+        {"matched": True, "match_type": ProductMatchType.NONE},
+        {"matched": False, "match_type": ProductMatchType.NONE, "confidence": 0.5},
+    ],
+)
+def test_match_result_rejects_contradictory_decisions(
+    contradictory_fields: dict[str, object],
+) -> None:
+    """Consumers should never receive conflicting flags, types, or confidence."""
+    result_data = match_product("milk", make_product("milk")).model_dump()
+    result_data.update(contradictory_fields)
+
+    with pytest.raises(ValidationError):
+        ProductMatchResult.model_validate(result_data)

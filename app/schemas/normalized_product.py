@@ -54,9 +54,15 @@ class NormalizedProduct(BaseModel):
     )
     brand: str | None = Field(
         default=None,
+        min_length=1,
+        max_length=120,
         description="Canonical brand text when the original offer supplies it.",
     )
-    store: str = Field(description="Canonical store name for the advertised offer.")
+    store: str = Field(
+        min_length=1,
+        max_length=120,
+        description="Canonical store name for the advertised offer.",
+    )
     package_quantity: int | None = Field(
         default=None,
         ge=1,

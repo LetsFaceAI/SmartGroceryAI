@@ -12,6 +12,10 @@ from decimal import Decimal
 
 from app.schemas.normalized_product import CanonicalUnit, NormalizedProduct
 from app.schemas.product_offer import MeasurementUnit, ProductOffer
+from app.services.unit_normalization import (
+    UnsupportedMeasurementUnitError,
+    resolve_measurement_unit,
+)
 
 # Symbols commonly appended by packaging and advertising systems carry no product
 # identity. Other punctuation is retained because values such as "2%" and
@@ -28,40 +32,6 @@ STORE_ALIASES: dict[str, str] = {
     "nofrills": "no frills",
     "real canadian superstore": "real canadian superstore",
     "rcss": "real canadian superstore",
-}
-
-UNIT_ALIASES: dict[str, MeasurementUnit] = {
-    "ea": MeasurementUnit.EACH,
-    "each": MeasurementUnit.EACH,
-    "ct": MeasurementUnit.COUNT,
-    "count": MeasurementUnit.COUNT,
-    "counts": MeasurementUnit.COUNT,
-    "pk": MeasurementUnit.PACK,
-    "pack": MeasurementUnit.PACK,
-    "packs": MeasurementUnit.PACK,
-    "g": MeasurementUnit.GRAM,
-    "gram": MeasurementUnit.GRAM,
-    "grams": MeasurementUnit.GRAM,
-    "kg": MeasurementUnit.KILOGRAM,
-    "kilogram": MeasurementUnit.KILOGRAM,
-    "kilograms": MeasurementUnit.KILOGRAM,
-    "ml": MeasurementUnit.MILLILITRE,
-    "millilitre": MeasurementUnit.MILLILITRE,
-    "millilitres": MeasurementUnit.MILLILITRE,
-    "milliliter": MeasurementUnit.MILLILITRE,
-    "milliliters": MeasurementUnit.MILLILITRE,
-    "l": MeasurementUnit.LITRE,
-    "litre": MeasurementUnit.LITRE,
-    "litres": MeasurementUnit.LITRE,
-    "liter": MeasurementUnit.LITRE,
-    "liters": MeasurementUnit.LITRE,
-    "oz": MeasurementUnit.OUNCE,
-    "ounce": MeasurementUnit.OUNCE,
-    "ounces": MeasurementUnit.OUNCE,
-    "lb": MeasurementUnit.POUND,
-    "lbs": MeasurementUnit.POUND,
-    "pound": MeasurementUnit.POUND,
-    "pounds": MeasurementUnit.POUND,
 }
 
 _PACKAGE_PATTERN = re.compile(
@@ -107,15 +77,10 @@ def normalize_store_name(store_name: str) -> str:
 
 def normalize_unit(unit: MeasurementUnit | str) -> MeasurementUnit:
     """Resolve a unit enum or supported spelling without inferring unknown units."""
-    if isinstance(unit, MeasurementUnit):
-        return unit
-    normalized = unicodedata.normalize("NFKC", unit).strip().casefold()
     try:
-        return UNIT_ALIASES[normalized]
-    except KeyError:
-        raise ProductNormalizationError(
-            f"Unsupported measurement unit: {unit!r}."
-        ) from None
+        return resolve_measurement_unit(unit)
+    except UnsupportedMeasurementUnitError as exc:
+        raise ProductNormalizationError(str(exc)) from None
 
 
 def _canonicalize_package(
@@ -170,14 +135,33 @@ def parse_package_size(value: str) -> NormalizedPackageSize:
 
 def normalize_product_offer(offer: ProductOffer) -> NormalizedProduct:
     """Project one validated external offer into the canonical product model."""
+    normalized_name = normalize_product_name(offer.product_name)
+    normalized_store = normalize_store_name(offer.store)
+    if not any(character.isalnum() for character in normalized_name):
+        raise ProductNormalizationError(
+            "The product name contains no comparable letters or numbers."
+        )
+    if not any(character.isalnum() for character in normalized_store):
+        raise ProductNormalizationError(
+            "The store name contains no comparable letters or numbers."
+        )
+
+    normalized_brand = None
+    if offer.brand is not None:
+        brand_candidate = normalize_product_name(offer.brand)
+        # A formatting-only optional brand contains no reliable information, so
+        # preserve absence rather than emitting an empty comparison value.
+        if any(character.isalnum() for character in brand_candidate):
+            normalized_brand = brand_candidate
+
     package = None
     if offer.package_size is not None and offer.unit is not None:
         package = _canonicalize_package(1, offer.package_size, offer.unit)
 
     return NormalizedProduct(
-        normalized_name=normalize_product_name(offer.product_name),
-        brand=normalize_product_name(offer.brand) if offer.brand is not None else None,
-        store=normalize_store_name(offer.store),
+        normalized_name=normalized_name,
+        brand=normalized_brand,
+        store=normalized_store,
         package_quantity=package.package_quantity if package else None,
         package_size=package.package_size if package else None,
         total_package_size=package.total_package_size if package else None,
