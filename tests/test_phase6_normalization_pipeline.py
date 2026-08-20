@@ -19,6 +19,7 @@ from app.services.product_normalization import (
     normalize_product_offer,
     parse_package_size,
 )
+from app.services.product_offer_mapper import map_product_offer
 
 
 def test_complete_offer_normalizes_and_matches_end_to_end() -> None:
@@ -144,3 +145,29 @@ def test_multipack_parser_is_canonical_but_rejects_unsupported_units() -> None:
 
     with pytest.raises(ProductNormalizationError, match="Unsupported measurement unit"):
         parse_package_size("3 bunches")
+
+
+def test_mapped_multipack_reaches_normalization_and_matching() -> None:
+    """The validated offer boundary must retain an embedded package multiplier."""
+    offer = map_product_offer(
+        {
+            "product": "Lean Ground Beef",
+            "store": "Example Grocer",
+            "price": "8.99",
+            "packageSize": "2 x 500 g",
+            "source": "fixture:multipack-beef",
+        }
+    )
+
+    product = normalize_product_offer(offer)
+    result = match_product("ground beef", product)
+
+    assert offer.package_quantity == 2
+    assert offer.package_size == Decimal("500")
+    assert offer.unit is MeasurementUnit.GRAM
+    assert product.package_quantity == 2
+    assert product.package_size == Decimal("500")
+    assert product.total_package_size == Decimal("1000")
+    assert product.unit is CanonicalUnit.GRAM
+    assert result.matched is True
+    assert result.match_type is ProductMatchType.CONTAINMENT

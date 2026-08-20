@@ -5,13 +5,16 @@ small alias tables, package grammar, and metric scale conversions are explicit s
 future AI-assisted matching receives predictable inputs.
 """
 
-import re
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
 from app.schemas.normalized_product import CanonicalUnit, NormalizedProduct
 from app.schemas.product_offer import MeasurementUnit, ProductOffer
+from app.services.package_size_parser import (
+    PackageSizeParsingError,
+    parse_external_package_size,
+)
 from app.services.unit_normalization import (
     UnsupportedMeasurementUnitError,
     resolve_measurement_unit,
@@ -33,12 +36,6 @@ STORE_ALIASES: dict[str, str] = {
     "real canadian superstore": "real canadian superstore",
     "rcss": "real canadian superstore",
 }
-
-_PACKAGE_PATTERN = re.compile(
-    r"^(?:(?P<quantity>\d+)\s*[x×]\s*)?"
-    r"(?P<size>\d+(?:\.\d+)?)\s*"
-    r"(?P<unit>[A-Za-z]+)$"
-)
 
 
 class ProductNormalizationError(ValueError):
@@ -119,18 +116,15 @@ def parse_package_size(value: str) -> NormalizedPackageSize:
     ``<quantity> x <size> <unit>``. Anything else fails clearly rather than
     guessing whether a number describes weight, volume, or item count.
     """
-    normalized = unicodedata.normalize("NFKC", value).strip()
-    match = _PACKAGE_PATTERN.fullmatch(normalized)
-    if match is None:
-        raise ProductNormalizationError(
-            "Unsupported package size format. Expected values such as '500 g' "
-            "or '2 x 500 g'."
-        )
-
-    package_quantity = int(match.group("quantity") or "1")
-    package_size = Decimal(match.group("size"))
-    unit = normalize_unit(match.group("unit"))
-    return _canonicalize_package(package_quantity, package_size, unit)
+    try:
+        parsed = parse_external_package_size(value)
+    except PackageSizeParsingError as exc:
+        raise ProductNormalizationError(str(exc)) from None
+    return _canonicalize_package(
+        parsed.package_quantity,
+        parsed.package_size,
+        parsed.unit,
+    )
 
 
 def normalize_product_offer(offer: ProductOffer) -> NormalizedProduct:
@@ -156,7 +150,11 @@ def normalize_product_offer(offer: ProductOffer) -> NormalizedProduct:
 
     package = None
     if offer.package_size is not None and offer.unit is not None:
-        package = _canonicalize_package(1, offer.package_size, offer.unit)
+        package = _canonicalize_package(
+            offer.package_quantity,
+            offer.package_size,
+            offer.unit,
+        )
 
     return NormalizedProduct(
         normalized_name=normalized_name,

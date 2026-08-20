@@ -6,11 +6,17 @@ without forcing comparison, planning, or AI code to understand that external sha
 """
 
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from pydantic import ValidationError
 
 from app.schemas.product_offer import ProductOffer, PromotionStatus
+from app.services.package_size_parser import (
+    PackageSizeParsingError,
+    ParsedPackageSize,
+    parse_external_package_size,
+)
 from app.services.unit_normalization import (
     UnsupportedMeasurementUnitError,
     resolve_measurement_unit,
@@ -27,6 +33,7 @@ RAW_FIELD_MAP: dict[str, str] = {
     "regularPrice": "regular_price",
     "currency": "currency",
     "packageSize": "package_size",
+    "packageQuantity": "package_quantity",
     "unit": "unit",
     "validFrom": "valid_from",
     "validUntil": "valid_until",
@@ -48,6 +55,63 @@ def _normalize_unit(value: object) -> object:
             # external-contract error and reports the invalid ``unit`` field.
             return value.strip()
     return value
+
+
+def _parse_embedded_package_size(
+    raw_mapping: Mapping[str, object],
+    mapped_offer: dict[str, object],
+) -> None:
+    """Retain multipack details when packageSize includes its unit and quantity."""
+    raw_package_size = raw_mapping.get("packageSize")
+    if not isinstance(raw_package_size, str):
+        return
+
+    try:
+        parsed = parse_external_package_size(raw_package_size)
+    except PackageSizeParsingError:
+        # Numeric strings with a separate unit remain valid existing input. Other
+        # malformed strings are left for ProductOffer to reject as package_size.
+        return
+
+    _validate_embedded_package_consistency(raw_mapping, parsed)
+    mapped_offer["package_quantity"] = parsed.package_quantity
+    mapped_offer["package_size"] = parsed.package_size
+    mapped_offer["unit"] = parsed.unit
+
+
+def _validate_embedded_package_consistency(
+    raw_mapping: Mapping[str, object],
+    parsed: ParsedPackageSize,
+) -> None:
+    """Reject conflicting duplicate package metadata instead of choosing one."""
+    raw_quantity = raw_mapping.get("packageQuantity")
+    if raw_quantity is not None:
+        try:
+            numeric_quantity = Decimal(str(raw_quantity))
+        except InvalidOperation:
+            numeric_quantity = Decimal("-1")
+        if (
+            not numeric_quantity.is_finite()
+            or numeric_quantity != numeric_quantity.to_integral_value()
+            or int(numeric_quantity) != parsed.package_quantity
+        ):
+            raise ProductOfferMappingError(
+                "Raw packageQuantity conflicts with the quantity in packageSize."
+            )
+
+    raw_unit = raw_mapping.get("unit")
+    if raw_unit is None:
+        return
+    try:
+        resolved_unit = (
+            resolve_measurement_unit(raw_unit)
+            if isinstance(raw_unit, str)
+            else raw_unit
+        )
+    except UnsupportedMeasurementUnitError as exc:
+        raise ProductOfferMappingError("Raw unit conflicts with packageSize.") from exc
+    if resolved_unit != parsed.unit:
+        raise ProductOfferMappingError("Raw unit conflicts with packageSize.")
 
 
 def _map_promotion_status(raw_offer: Mapping[str, object]) -> PromotionStatus | None:
@@ -95,6 +159,8 @@ def map_product_offer(raw_offer: object) -> ProductOffer:
 
     if "unit" in mapped_offer:
         mapped_offer["unit"] = _normalize_unit(mapped_offer["unit"])
+
+    _parse_embedded_package_size(raw_mapping, mapped_offer)
 
     promotion_status = _map_promotion_status(raw_mapping)
     if promotion_status is not None:
