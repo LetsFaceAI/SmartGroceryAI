@@ -1,9 +1,9 @@
-"""Normalized product-offer schema for grocery flyer data.
+"""Validated external product-offer schema for grocery flyer data.
 
 External flyer records are often inconsistent or incomplete. ``ProductOffer`` is
-the validated boundary that future Apify/MCP adapters will produce before deal
-comparison, ranking, or AI reasoning uses the data. This module intentionally has
-no knowledge of any specific data provider.
+the validated ingestion boundary that Apify/MCP adapters produce before a separate
+normalization layer prepares offers for comparison, ranking, or AI reasoning. This
+module intentionally has no knowledge of any specific data provider.
 """
 
 from datetime import date
@@ -48,7 +48,7 @@ class MeasurementUnit(StrEnum):
 
 
 class ProductOffer(BaseModel):
-    """Represent one normalized product offer from a grocery flyer.
+    """Represent one validated external product offer from a grocery flyer.
 
     Product name, store, current price, and source are required because an offer
     cannot be compared or traced without them. Other fields remain optional to
