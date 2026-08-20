@@ -1,5 +1,6 @@
 """Focused tests for deterministic price-comparison result contracts."""
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -8,11 +9,14 @@ from pydantic import ValidationError
 from app.schemas.normalized_product import CanonicalUnit, NormalizedProduct
 from app.schemas.price_comparison import (
     OfferPriceComparison,
+    OfferValidityStatus,
     PriceComparisonStatus,
     UnitPriceUnit,
 )
-from app.schemas.product_offer import MeasurementUnit, ProductOffer
+from app.schemas.product_offer import MeasurementUnit, PriceBasis, ProductOffer
 from app.services.product_normalization import normalize_product_offer
+
+AS_OF = date(2026, 8, 20)
 
 
 def make_product(
@@ -27,6 +31,9 @@ def make_product(
         price="8.99",
         package_size=package_size,
         unit=unit,
+        price_basis=PriceBasis.TOTAL_PACKAGE,
+        valid_from=date(2026, 1, 1),
+        valid_until=date(2026, 12, 31),
         source="fixture:coffee",
     )
     return normalize_product_offer(offer)
@@ -39,6 +46,8 @@ def test_comparable_result_retains_precise_unit_price() -> None:
     result = OfferPriceComparison(
         original_offer=product.original_offer,
         normalized_product=product,
+        as_of=AS_OF,
+        validity_status=OfferValidityStatus.ACTIVE,
         status=PriceComparisonStatus.COMPARABLE,
         reason="The offer has a canonical mass quantity.",
         comparable_quantity=product.total_package_size,
@@ -63,6 +72,8 @@ def test_missing_package_result_is_explicit() -> None:
     result = OfferPriceComparison(
         original_offer=product.original_offer,
         normalized_product=product,
+        as_of=AS_OF,
+        validity_status=OfferValidityStatus.ACTIVE,
         status=PriceComparisonStatus.MISSING_PACKAGE_DATA,
         reason="The flyer did not provide package size and unit.",
         currency="CAD",
@@ -80,6 +91,8 @@ def test_unsupported_unit_retains_known_measurement_without_unit_price() -> None
     result = OfferPriceComparison(
         original_offer=product.original_offer,
         normalized_product=product,
+        as_of=AS_OF,
+        validity_status=OfferValidityStatus.ACTIVE,
         status=PriceComparisonStatus.UNSUPPORTED_UNIT,
         reason="Cross-system mass conversion is not enabled.",
         comparable_quantity=product.total_package_size,
@@ -115,6 +128,8 @@ def test_comparison_status_rejects_inconsistent_values(
     comparison_data: dict[str, object] = {
         "original_offer": product.original_offer,
         "normalized_product": product,
+        "as_of": AS_OF,
+        "validity_status": OfferValidityStatus.ACTIVE,
         "status": PriceComparisonStatus.COMPARABLE,
         "reason": "Fixture comparison.",
         "comparable_quantity": Decimal("500"),
@@ -143,6 +158,8 @@ def test_comparison_rejects_mismatched_source_offer() -> None:
         OfferPriceComparison(
             original_offer=other_offer,
             normalized_product=product,
+            as_of=AS_OF,
+            validity_status=OfferValidityStatus.ACTIVE,
             status=PriceComparisonStatus.COMPARABLE,
             reason="Invalid mixed-source result.",
             comparable_quantity=Decimal("500"),
@@ -151,6 +168,27 @@ def test_comparison_rejects_mismatched_source_offer() -> None:
             unit_price_unit=UnitPriceUnit.KILOGRAM,
             currency="CAD",
         )
+
+
+def test_comparison_rejects_validity_status_inconsistent_with_as_of() -> None:
+    """Callers cannot label an expired offer active in a comparison contract."""
+    product = make_product()
+    comparison_data: dict[str, object] = {
+        "original_offer": product.original_offer,
+        "normalized_product": product,
+        "as_of": date(2027, 1, 1),
+        "validity_status": OfferValidityStatus.ACTIVE,
+        "status": PriceComparisonStatus.COMPARABLE,
+        "reason": "Invalid validity fixture.",
+        "comparable_quantity": Decimal("500"),
+        "comparable_unit": CanonicalUnit.GRAM,
+        "unit_price": Decimal("17.98"),
+        "unit_price_unit": UnitPriceUnit.KILOGRAM,
+        "currency": "CAD",
+    }
+
+    with pytest.raises(ValidationError, match="validity_status must match"):
+        OfferPriceComparison.model_validate(comparison_data)
 
 
 @pytest.mark.parametrize(
@@ -168,6 +206,8 @@ def test_comparison_rejects_measurement_not_from_normalized_product(
     comparison_data: dict[str, object] = {
         "original_offer": product.original_offer,
         "normalized_product": product,
+        "as_of": AS_OF,
+        "validity_status": OfferValidityStatus.ACTIVE,
         "status": PriceComparisonStatus.COMPARABLE,
         "reason": "Invalid measurement fixture.",
         "comparable_quantity": Decimal("500"),

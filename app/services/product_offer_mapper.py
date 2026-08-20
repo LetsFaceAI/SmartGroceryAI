@@ -35,6 +35,8 @@ RAW_FIELD_MAP: dict[str, str] = {
     "packageSize": "package_size",
     "packageQuantity": "package_quantity",
     "unit": "unit",
+    "priceBasis": "price_basis",
+    "priceBasisUnit": "price_basis_unit",
     "validFrom": "valid_from",
     "validUntil": "valid_until",
     "source": "source",

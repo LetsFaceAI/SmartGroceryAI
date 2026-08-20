@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.schemas.product_offer import (
     MeasurementUnit,
+    PriceBasis,
     ProductOffer,
     PromotionStatus,
 )
@@ -68,6 +69,23 @@ def test_map_product_offer_handles_missing_optional_data() -> None:
     assert offer.promotion_status is PromotionStatus.UNKNOWN
     assert offer.valid_from is None
     assert offer.valid_until is None
+
+
+def test_map_product_offer_accepts_canonical_price_basis_fields() -> None:
+    """The provider-neutral mapper should accept already translated semantics."""
+    offer = map_product_offer(
+        {
+            "product": "Ground Beef",
+            "store": "Market",
+            "price": "6.99",
+            "priceBasis": "per_weight",
+            "priceBasisUnit": "kg",
+            "source": "weekly-flyer",
+        }
+    )
+
+    assert offer.price_basis is PriceBasis.PER_WEIGHT
+    assert offer.price_basis_unit is MeasurementUnit.KILOGRAM
 
 
 def test_map_product_offer_parses_single_embedded_package_size() -> None:

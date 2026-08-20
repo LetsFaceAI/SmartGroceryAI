@@ -48,6 +48,20 @@ class MeasurementUnit(StrEnum):
     POUND = "lb"
 
 
+class PriceBasis(StrEnum):
+    """Describe what quantity the advertised price applies to.
+
+    Keeping an explicit unknown state is safer than assuming every flyer price is
+    a package total; provider qualifiers are not consistently present.
+    """
+
+    TOTAL_PACKAGE = "total_package"
+    EACH = "each"
+    PER_WEIGHT = "per_weight"
+    PER_VOLUME = "per_volume"
+    UNKNOWN = "unknown"
+
+
 class ProductOffer(BaseModel):
     """Represent one validated external product offer from a grocery flyer.
 
@@ -59,7 +73,13 @@ class ProductOffer(BaseModel):
     # Unknown fields are rejected so provider mapping mistakes are visible at the
     # ingestion boundary. Whitespace normalization keeps names consistent enough for
     # later matching without prematurely changing capitalization or wording.
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    # Every downstream normalized/comparison object retains this offer. Freezing it
+    # prevents later code from bypassing the validators after those snapshots exist.
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid",
+        frozen=True,
+    )
 
     product_name: str = Field(
         min_length=1,
@@ -99,6 +119,14 @@ class ProductOffer(BaseModel):
         default=None,
         description="Optional normalized package measurement unit.",
     )
+    price_basis: PriceBasis = Field(
+        default=PriceBasis.UNKNOWN,
+        description="Meaning of the advertised price supplied by the provider.",
+    )
+    price_basis_unit: MeasurementUnit | None = Field(
+        default=None,
+        description="Provider denominator for a per-weight or per-volume price.",
+    )
     promotion_status: PromotionStatus = Field(
         default=PromotionStatus.UNKNOWN,
         description="Whether the offer is a sale, regular price, or unknown.",
@@ -117,7 +145,13 @@ class ProductOffer(BaseModel):
         description="Provider name, record identifier, or URL used for provenance.",
     )
 
-    @field_validator("unit", "promotion_status", mode="before")
+    @field_validator(
+        "unit",
+        "price_basis",
+        "price_basis_unit",
+        "promotion_status",
+        mode="before",
+    )
     @classmethod
     def normalize_enum_text(cls, value: object) -> object:
         """Trim raw enum strings before matching their normalized values."""
@@ -133,6 +167,28 @@ class ProductOffer(BaseModel):
         ):
             raise ValueError(
                 "A multipack quantity requires both package_size and unit."
+            )
+
+        weight_units = {
+            MeasurementUnit.GRAM,
+            MeasurementUnit.KILOGRAM,
+            MeasurementUnit.OUNCE,
+            MeasurementUnit.POUND,
+        }
+        volume_units = {MeasurementUnit.MILLILITRE, MeasurementUnit.LITRE}
+        if self.price_basis is PriceBasis.PER_WEIGHT:
+            if self.price_basis_unit not in weight_units:
+                raise ValueError(
+                    "A per-weight price requires a weight price_basis_unit."
+                )
+        elif self.price_basis is PriceBasis.PER_VOLUME:
+            if self.price_basis_unit not in volume_units:
+                raise ValueError(
+                    "A per-volume price requires a volume price_basis_unit."
+                )
+        elif self.price_basis_unit is not None:
+            raise ValueError(
+                "price_basis_unit is only valid for per-weight or per-volume prices."
             )
 
         if (

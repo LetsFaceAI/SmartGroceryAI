@@ -5,6 +5,7 @@ an LLM to produce. They contain only domain data and validation; no model invoca
 or LangChain behavior belongs in this module.
 """
 
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +13,27 @@ from pydantic import BaseModel, ConfigDict, Field
 # Preferences are short user constraints such as "organic" or "no substitutions".
 # Validating each list element prevents empty strings from becoming meaningless data.
 Preference = Annotated[str, Field(min_length=1, max_length=100)]
+
+
+class ConstraintRequirement(StrEnum):
+    """State whether an item qualifier is mandatory or merely preferred."""
+
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+
+
+class ShoppingConstraint(BaseModel):
+    """Preserve one explicit item-level requirement for deterministic matching."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid", frozen=True)
+
+    value: Preference = Field(
+        description="Product qualifier such as organic, 2%, or lactose-free.",
+    )
+    requirement: ConstraintRequirement = Field(
+        default=ConstraintRequirement.REQUIRED,
+        description="Whether a candidate must satisfy this qualifier.",
+    )
 
 
 class ShoppingItem(BaseModel):
@@ -24,7 +46,13 @@ class ShoppingItem(BaseModel):
 
     # Trimming strings handles natural-language whitespace. Forbidding unknown fields
     # catches misspelled keys instead of silently discarding user or LLM output.
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    # Search plans retain these validated objects in tuples. Frozen items and an
+    # immutable constraints tuple prevent a caller from changing plan semantics.
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid",
+        frozen=True,
+    )
 
     name: str = Field(
         min_length=1,
@@ -48,6 +76,13 @@ class ShoppingItem(BaseModel):
         min_length=1,
         max_length=500,
         description="Optional item-specific details or acceptable substitutions.",
+    )
+    constraints: tuple[ShoppingConstraint, ...] = Field(
+        default=(),
+        max_length=20,
+        description=(
+            "Explicit required or optional product qualifiers retained for matching."
+        ),
     )
 
 

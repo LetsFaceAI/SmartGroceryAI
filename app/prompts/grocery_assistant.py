@@ -32,8 +32,10 @@ Follow these extraction rules:
 - Include only grocery items or grocery categories explicitly mentioned by the user.
 - Use the schema default quantity when no quantity is stated.
 - Include a unit only when the user states one; otherwise leave it unset.
-- Put item-specific qualifiers such as "2%", "lactose-free", or an organic request
-  for one item in that item's notes.
+- Put item-specific qualifiers such as "2%", "lactose-free", "gluten-free", or
+  "organic" in that item's constraints. Mark a constraint optional only when the
+  user clearly uses language such as "prefer", "if possible", or "when available";
+  otherwise mark it required. Keep other item context in notes.
 - Put preferences that apply to the whole request, such as "organic when possible"
   or "lowest price", in the request-wide preferences list.
 - Preserve vague categories such as "fruit" instead of inventing a specific item.

@@ -4,7 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.normalized_product import NormalizedProduct
-from app.schemas.product_match import ProductMatchResult, ProductMatchType
+from app.schemas.product_match import (
+    ProductMatchDecision,
+    ProductMatchResult,
+    ProductMatchType,
+)
 from app.schemas.product_offer import ProductOffer
 from app.services.product_matcher import ProductMatchingError, match_product
 from app.services.product_normalization import normalize_product_offer
@@ -52,14 +56,17 @@ def test_complete_token_sequence_containment_matches(
     assert result.confidence == 0.85
 
 
-def test_strong_reordered_token_overlap_matches() -> None:
-    """The same meaningful words in a different order should be a partial match."""
+def test_strong_reordered_token_overlap_is_an_uncertain_candidate() -> None:
+    """Reordered words stay visible without being trusted for automatic ranking."""
     result = match_product(
         "tomato basil pasta sauce",
         make_product("Basil Tomato Sauce Pasta"),
     )
 
-    assert result.matched is True
+    assert result.matched is False
+    assert result.candidate is True
+    assert result.safe_for_ranking is False
+    assert result.decision is ProductMatchDecision.UNCERTAIN
     assert result.match_type is ProductMatchType.TOKEN_OVERLAP
     assert result.confidence == 0.70
 

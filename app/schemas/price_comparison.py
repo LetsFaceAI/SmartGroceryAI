@@ -5,6 +5,7 @@ add comparison readiness and exact unit-price data without performing matching,
 ranking, or price calculations themselves.
 """
 
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Self
@@ -12,7 +13,8 @@ from typing import Annotated, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.normalized_product import CanonicalUnit, NormalizedProduct
-from app.schemas.product_offer import PackageAmount, ProductOffer
+from app.schemas.product_match import ProductMatchDecision, ProductMatchResult
+from app.schemas.product_offer import PackageAmount, PriceBasis, ProductOffer
 
 # Unit prices often need more fractional digits than retail totals. Decimal avoids
 # binary floating-point errors, while twelve decimal places provide deterministic
@@ -34,6 +36,34 @@ class PriceComparisonStatus(StrEnum):
     COMPARABLE = "comparable"
     MISSING_PACKAGE_DATA = "missing_package_data"
     UNSUPPORTED_UNIT = "unsupported_unit"
+    UNKNOWN_PRICE_BASIS = "unknown_price_basis"
+    INELIGIBLE_VALIDITY = "ineligible_validity"
+
+
+class OfferValidityStatus(StrEnum):
+    """Classify an offer against an explicit calendar date."""
+
+    ACTIVE = "active"
+    UPCOMING = "upcoming"
+    EXPIRED = "expired"
+    UNKNOWN = "unknown"
+
+
+def determine_offer_validity(
+    offer: ProductOffer,
+    *,
+    as_of: date,
+) -> OfferValidityStatus:
+    """Classify an inclusive flyer window without consulting the system clock."""
+    if offer.valid_from is None and offer.valid_until is None:
+        return OfferValidityStatus.UNKNOWN
+    if offer.valid_from is not None and as_of < offer.valid_from:
+        return OfferValidityStatus.UPCOMING
+    if offer.valid_until is not None and as_of > offer.valid_until:
+        return OfferValidityStatus.EXPIRED
+    if offer.valid_from is None or offer.valid_until is None:
+        return OfferValidityStatus.UNKNOWN
+    return OfferValidityStatus.ACTIVE
 
 
 class UnitPriceUnit(StrEnum):
@@ -57,6 +87,8 @@ class OfferPriceComparison(BaseModel):
 
     original_offer: ProductOffer
     normalized_product: NormalizedProduct
+    as_of: date
+    validity_status: OfferValidityStatus
     status: PriceComparisonStatus
     reason: str = Field(min_length=1, max_length=300)
     comparable_quantity: PackageAmount | None = Field(
@@ -89,19 +121,23 @@ class OfferPriceComparison(BaseModel):
             )
         if self.currency != self.original_offer.currency:
             raise ValueError("currency must match the original offer currency.")
-        if (
-            self.comparable_quantity is not None
-            and self.comparable_quantity != self.normalized_product.total_package_size
+        if self.validity_status is not determine_offer_validity(
+            self.original_offer,
+            as_of=self.as_of,
         ):
             raise ValueError(
-                "comparable_quantity must match the normalized total package size."
+                "validity_status must match the offer window and explicit as_of date."
             )
         if (
-            self.comparable_unit is not None
-            and self.comparable_unit is not self.normalized_product.unit
+            self.status is PriceComparisonStatus.COMPARABLE
+            and self.validity_status is not OfferValidityStatus.ACTIVE
         ):
-            raise ValueError("comparable_unit must match the normalized product unit.")
-
+            raise ValueError("A comparable offer must be active as of the stated date.")
+        if (
+            self.status is PriceComparisonStatus.INELIGIBLE_VALIDITY
+            and self.validity_status is OfferValidityStatus.ACTIVE
+        ):
+            raise ValueError("An active offer cannot have ineligible validity.")
         comparison_values = (
             self.comparable_quantity,
             self.comparable_unit,
@@ -113,12 +149,29 @@ class OfferPriceComparison(BaseModel):
                 raise ValueError(
                     "Comparable offers require quantity, units, and unit_price."
                 )
+            if (
+                self.original_offer.price_basis
+                in {PriceBasis.TOTAL_PACKAGE, PriceBasis.EACH}
+                and self.normalized_product.total_package_size is not None
+                and (
+                    self.comparable_quantity
+                    != self.normalized_product.total_package_size
+                    or self.comparable_unit is not self.normalized_product.unit
+                )
+            ):
+                raise ValueError(
+                    "Package-price comparison values must match normalized package data."
+                )
             return self
 
-        if self.status is PriceComparisonStatus.MISSING_PACKAGE_DATA:
+        if self.status in {
+            PriceComparisonStatus.MISSING_PACKAGE_DATA,
+            PriceComparisonStatus.UNKNOWN_PRICE_BASIS,
+            PriceComparisonStatus.INELIGIBLE_VALIDITY,
+        }:
             if any(value is not None for value in comparison_values):
                 raise ValueError(
-                    "Missing-package results cannot contain comparison values."
+                    "This non-comparable status cannot contain comparison values."
                 )
             return self
 
@@ -157,10 +210,18 @@ class CheapestOfferSelection(BaseModel):
     cheapest_offer: OfferPriceComparison | None = None
     tied_cheapest_offers: tuple[OfferPriceComparison, ...] = ()
     ignored_non_matches: int = Field(default=0, ge=0)
+    uncertain_candidates: tuple[ProductMatchResult, ...] = ()
 
     @model_validator(mode="after")
     def validate_selection_state(self) -> Self:
         """Prevent a selection status from contradicting its ranked output."""
+        if any(
+            candidate.decision is not ProductMatchDecision.UNCERTAIN
+            for candidate in self.uncertain_candidates
+        ):
+            raise ValueError(
+                "uncertain_candidates must contain uncertain matches only."
+            )
         if self.status is CheapestOfferStatus.SELECTED:
             if not self.ranked_comparable_offers or self.cheapest_offer is None:
                 raise ValueError(
