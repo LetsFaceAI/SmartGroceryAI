@@ -20,14 +20,15 @@ from app.services.product_normalization import normalize_product_name
 _UNIT_PRICE_QUANTUM = Decimal(1).scaleb(-UNIT_PRICE_DECIMAL_PLACES)
 
 # Canonical metric inputs are scaled to familiar shelf-comparison denominators.
-# Discrete units share an item basis; imperial units remain unsupported until an
-# explicit cross-system conversion policy is introduced.
+# Count and each share an item basis. Pack remains price-per-pack because treating
+# unknown pack contents as individual items would be an unsafe assumption.
+# Imperial units remain unsupported until an explicit conversion policy exists.
 _UNIT_PRICE_RULES: dict[CanonicalUnit, tuple[Decimal, UnitPriceUnit]] = {
     CanonicalUnit.GRAM: (Decimal("1000"), UnitPriceUnit.KILOGRAM),
     CanonicalUnit.MILLILITRE: (Decimal("1000"), UnitPriceUnit.LITRE),
     CanonicalUnit.EACH: (Decimal("1"), UnitPriceUnit.ITEM),
     CanonicalUnit.COUNT: (Decimal("1"), UnitPriceUnit.ITEM),
-    CanonicalUnit.PACK: (Decimal("1"), UnitPriceUnit.ITEM),
+    CanonicalUnit.PACK: (Decimal("1"), UnitPriceUnit.PACK),
 }
 
 

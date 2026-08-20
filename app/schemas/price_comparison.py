@@ -42,6 +42,7 @@ class UnitPriceUnit(StrEnum):
     KILOGRAM = "kg"
     LITRE = "L"
     ITEM = "item"
+    PACK = "pack"
 
 
 class OfferPriceComparison(BaseModel):
@@ -88,6 +89,18 @@ class OfferPriceComparison(BaseModel):
             )
         if self.currency != self.original_offer.currency:
             raise ValueError("currency must match the original offer currency.")
+        if (
+            self.comparable_quantity is not None
+            and self.comparable_quantity != self.normalized_product.total_package_size
+        ):
+            raise ValueError(
+                "comparable_quantity must match the normalized total package size."
+            )
+        if (
+            self.comparable_unit is not None
+            and self.comparable_unit is not self.normalized_product.unit
+        ):
+            raise ValueError("comparable_unit must match the normalized product unit.")
 
         comparison_values = (
             self.comparable_quantity,
@@ -158,6 +171,28 @@ class CheapestOfferSelection(BaseModel):
             if not self.tied_cheapest_offers:
                 raise ValueError(
                     "A selected result must include its cheapest tie group."
+                )
+            if any(
+                comparison.status is not PriceComparisonStatus.COMPARABLE
+                for comparison in self.ranked_comparable_offers
+            ):
+                raise ValueError("Ranked offers must all be comparable.")
+            if any(
+                comparison not in self.comparisons
+                for comparison in self.ranked_comparable_offers
+            ):
+                raise ValueError("Ranked offers must belong to comparisons.")
+            if any(
+                comparison not in self.ranked_comparable_offers
+                for comparison in self.tied_cheapest_offers
+            ):
+                raise ValueError("Tied offers must belong to the ranked offers.")
+            if any(
+                comparison.unit_price != self.cheapest_offer.unit_price
+                for comparison in self.tied_cheapest_offers
+            ):
+                raise ValueError(
+                    "Tied offers must share the cheapest offer's unit price."
                 )
             return self
 

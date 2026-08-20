@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.price_comparison import (
+    CheapestOfferSelection,
     CheapestOfferStatus,
     PriceComparisonStatus,
     UnitPriceUnit,
@@ -70,7 +71,8 @@ def make_match(
         ),
         ("2", MeasurementUnit.LITRE, "3.00", "1.500000000000", UnitPriceUnit.LITRE),
         ("12", MeasurementUnit.COUNT, "3.60", "0.300000000000", UnitPriceUnit.ITEM),
-        ("6", MeasurementUnit.PACK, "6.00", "1.000000000000", UnitPriceUnit.ITEM),
+        ("1", MeasurementUnit.EACH, "2.25", "2.250000000000", UnitPriceUnit.ITEM),
+        ("6", MeasurementUnit.PACK, "6.00", "1.000000000000", UnitPriceUnit.PACK),
     ],
 )
 def test_unit_price_rules_use_exact_decimal_arithmetic(
@@ -195,6 +197,18 @@ def test_equal_unit_prices_return_ties_with_deterministic_winner() -> None:
     } == {"Alpha Market", "Beta Market"}
 
 
+def test_selection_schema_rejects_false_tie_group() -> None:
+    """A result cannot label a more expensive ranked offer as an exact tie."""
+    cheaper = make_match(price="7.00", source="fixture:cheaper")
+    expensive = make_match(price="8.00", source="fixture:expensive")
+    selection = select_cheapest_offer("ground coffee", [cheaper, expensive])
+    selection_data = selection.model_dump()
+    selection_data["tied_cheapest_offers"] = [selection.ranked_comparable_offers[-1]]
+
+    with pytest.raises(ValidationError, match="must share the cheapest"):
+        CheapestOfferSelection.model_validate(selection_data)
+
+
 def test_non_matching_offer_is_ignored_before_price_calculation() -> None:
     """A numerically cheap unrelated product must never enter grocery ranking."""
     matching = make_match(store="Coffee Store", source="fixture:coffee")
@@ -252,6 +266,25 @@ def test_different_currencies_are_not_ranked_together() -> None:
     american = make_match(currency="USD", source="fixture:coffee-usd")
 
     selection = select_cheapest_offer("ground coffee", [canadian, american])
+
+    assert selection.status is CheapestOfferStatus.INCOMPATIBLE_COMPARISON_GROUPS
+    assert selection.cheapest_offer is None
+
+
+def test_pack_and_item_counts_are_not_assumed_equivalent() -> None:
+    """Unknown pack contents cannot safely be relabeled as individual items."""
+    counted_items = make_match(
+        package_size="6",
+        unit=MeasurementUnit.COUNT,
+        source="fixture:counted-items",
+    )
+    packs = make_match(
+        package_size="6",
+        unit=MeasurementUnit.PACK,
+        source="fixture:packs",
+    )
+
+    selection = select_cheapest_offer("ground coffee", [counted_items, packs])
 
     assert selection.status is CheapestOfferStatus.INCOMPATIBLE_COMPARISON_GROUPS
     assert selection.cheapest_offer is None

@@ -43,14 +43,14 @@ def test_comparable_result_retains_precise_unit_price() -> None:
         reason="The offer has a canonical mass quantity.",
         comparable_quantity=product.total_package_size,
         comparable_unit=product.unit,
-        unit_price=Decimal("0.01798"),
+        unit_price=Decimal("17.98"),
         unit_price_unit=UnitPriceUnit.KILOGRAM,
         currency="CAD",
     )
 
     assert result.comparable_quantity == Decimal("500")
     assert result.comparable_unit is CanonicalUnit.GRAM
-    assert result.unit_price == Decimal("0.01798")
+    assert result.unit_price == Decimal("17.98")
     assert result.unit_price_unit is UnitPriceUnit.KILOGRAM
     assert isinstance(result.unit_price, Decimal)
     assert result.original_offer is product.original_offer
@@ -119,7 +119,7 @@ def test_comparison_status_rejects_inconsistent_values(
         "reason": "Fixture comparison.",
         "comparable_quantity": Decimal("500"),
         "comparable_unit": CanonicalUnit.GRAM,
-        "unit_price": Decimal("0.01798"),
+        "unit_price": Decimal("17.98"),
         "unit_price_unit": UnitPriceUnit.KILOGRAM,
         "currency": "CAD",
     }
@@ -147,7 +147,36 @@ def test_comparison_rejects_mismatched_source_offer() -> None:
             reason="Invalid mixed-source result.",
             comparable_quantity=Decimal("500"),
             comparable_unit=CanonicalUnit.GRAM,
-            unit_price=Decimal("0.01798"),
+            unit_price=Decimal("17.98"),
             unit_price_unit=UnitPriceUnit.KILOGRAM,
             currency="CAD",
         )
+
+
+@pytest.mark.parametrize(
+    "incorrect_field",
+    [
+        {"comparable_quantity": Decimal("250")},
+        {"comparable_unit": CanonicalUnit.MILLILITRE},
+    ],
+)
+def test_comparison_rejects_measurement_not_from_normalized_product(
+    incorrect_field: dict[str, object],
+) -> None:
+    """Comparison context cannot silently diverge from normalized package data."""
+    product = make_product()
+    comparison_data: dict[str, object] = {
+        "original_offer": product.original_offer,
+        "normalized_product": product,
+        "status": PriceComparisonStatus.COMPARABLE,
+        "reason": "Invalid measurement fixture.",
+        "comparable_quantity": Decimal("500"),
+        "comparable_unit": CanonicalUnit.GRAM,
+        "unit_price": Decimal("17.98"),
+        "unit_price_unit": UnitPriceUnit.KILOGRAM,
+        "currency": "CAD",
+    }
+    comparison_data.update(incorrect_field)
+
+    with pytest.raises(ValidationError):
+        OfferPriceComparison.model_validate(comparison_data)
