@@ -17,9 +17,14 @@ from app.schemas.product_offer import PackageAmount, ProductOffer
 # Unit prices often need more fractional digits than retail totals. Decimal avoids
 # binary floating-point errors, while twelve decimal places provide deterministic
 # precision for small per-gram or per-millilitre amounts.
+UNIT_PRICE_DECIMAL_PLACES = 12
 UnitPrice = Annotated[
     Decimal,
-    Field(gt=Decimal("0"), max_digits=20, decimal_places=12),
+    Field(
+        gt=Decimal("0"),
+        max_digits=28,
+        decimal_places=UNIT_PRICE_DECIMAL_PLACES,
+    ),
 ]
 
 
@@ -29,6 +34,14 @@ class PriceComparisonStatus(StrEnum):
     COMPARABLE = "comparable"
     MISSING_PACKAGE_DATA = "missing_package_data"
     UNSUPPORTED_UNIT = "unsupported_unit"
+
+
+class UnitPriceUnit(StrEnum):
+    """Define the denominator displayed for a calculated unit price."""
+
+    KILOGRAM = "kg"
+    LITRE = "L"
+    ITEM = "item"
 
 
 class OfferPriceComparison(BaseModel):
@@ -55,7 +68,11 @@ class OfferPriceComparison(BaseModel):
     )
     unit_price: UnitPrice | None = Field(
         default=None,
-        description="Exact offer price per one comparable unit.",
+        description="Exact offer price per one unit_price_unit.",
+    )
+    unit_price_unit: UnitPriceUnit | None = Field(
+        default=None,
+        description="Standard denominator used to display and rank unit_price.",
     )
     currency: str = Field(
         pattern=r"^[A-Z]{3}$",
@@ -76,11 +93,12 @@ class OfferPriceComparison(BaseModel):
             self.comparable_quantity,
             self.comparable_unit,
             self.unit_price,
+            self.unit_price_unit,
         )
         if self.status is PriceComparisonStatus.COMPARABLE:
             if any(value is None for value in comparison_values):
                 raise ValueError(
-                    "Comparable offers require quantity, unit, and unit_price."
+                    "Comparable offers require quantity, units, and unit_price."
                 )
             return self
 
@@ -100,4 +118,55 @@ class OfferPriceComparison(BaseModel):
             )
         if self.unit_price is not None:
             raise ValueError("Unsupported-unit results cannot contain unit_price.")
+        if self.unit_price_unit is not None:
+            raise ValueError("Unsupported-unit results cannot contain unit_price_unit.")
+        return self
+
+
+class CheapestOfferStatus(StrEnum):
+    """Describe the outcome of selecting from matched offer candidates."""
+
+    SELECTED = "selected"
+    NO_COMPARABLE_OFFERS = "no_comparable_offers"
+    INCOMPATIBLE_COMPARISON_GROUPS = "incompatible_comparison_groups"
+
+
+class CheapestOfferSelection(BaseModel):
+    """Return deterministic ranking context without hiding rejected candidates."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requested_item_name: str = Field(min_length=1, max_length=200)
+    status: CheapestOfferStatus
+    reason: str = Field(min_length=1, max_length=300)
+    comparisons: tuple[OfferPriceComparison, ...]
+    ranked_comparable_offers: tuple[OfferPriceComparison, ...] = ()
+    cheapest_offer: OfferPriceComparison | None = None
+    tied_cheapest_offers: tuple[OfferPriceComparison, ...] = ()
+    ignored_non_matches: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_selection_state(self) -> Self:
+        """Prevent a selection status from contradicting its ranked output."""
+        if self.status is CheapestOfferStatus.SELECTED:
+            if not self.ranked_comparable_offers or self.cheapest_offer is None:
+                raise ValueError(
+                    "A selected result requires ranked and cheapest offers."
+                )
+            if self.cheapest_offer != self.ranked_comparable_offers[0]:
+                raise ValueError("cheapest_offer must be the first ranked offer.")
+            if not self.tied_cheapest_offers:
+                raise ValueError(
+                    "A selected result must include its cheapest tie group."
+                )
+            return self
+
+        if (
+            self.ranked_comparable_offers
+            or self.cheapest_offer is not None
+            or self.tied_cheapest_offers
+        ):
+            raise ValueError(
+                "A non-selected result cannot contain ranked or cheapest offers."
+            )
         return self

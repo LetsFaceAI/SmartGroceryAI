@@ -9,6 +9,7 @@ from app.schemas.normalized_product import CanonicalUnit, NormalizedProduct
 from app.schemas.price_comparison import (
     OfferPriceComparison,
     PriceComparisonStatus,
+    UnitPriceUnit,
 )
 from app.schemas.product_offer import MeasurementUnit, ProductOffer
 from app.services.product_normalization import normalize_product_offer
@@ -43,12 +44,14 @@ def test_comparable_result_retains_precise_unit_price() -> None:
         comparable_quantity=product.total_package_size,
         comparable_unit=product.unit,
         unit_price=Decimal("0.01798"),
+        unit_price_unit=UnitPriceUnit.KILOGRAM,
         currency="CAD",
     )
 
     assert result.comparable_quantity == Decimal("500")
     assert result.comparable_unit is CanonicalUnit.GRAM
     assert result.unit_price == Decimal("0.01798")
+    assert result.unit_price_unit is UnitPriceUnit.KILOGRAM
     assert isinstance(result.unit_price, Decimal)
     assert result.original_offer is product.original_offer
 
@@ -117,6 +120,7 @@ def test_comparison_status_rejects_inconsistent_values(
         "comparable_quantity": Decimal("500"),
         "comparable_unit": CanonicalUnit.GRAM,
         "unit_price": Decimal("0.01798"),
+        "unit_price_unit": UnitPriceUnit.KILOGRAM,
         "currency": "CAD",
     }
     comparison_data.update(invalid_fields)
@@ -144,5 +148,6 @@ def test_comparison_rejects_mismatched_source_offer() -> None:
             comparable_quantity=Decimal("500"),
             comparable_unit=CanonicalUnit.GRAM,
             unit_price=Decimal("0.01798"),
+            unit_price_unit=UnitPriceUnit.KILOGRAM,
             currency="CAD",
         )
