@@ -10,6 +10,22 @@ from typing import Protocol, runtime_checkable
 from app.schemas.search_provider import GrocerySearchRequest, GrocerySearchResult
 
 
+class SearchProviderError(RuntimeError):
+    """Base error exposed by provider implementations to application callers."""
+
+
+class UnsupportedSearchIntentError(SearchProviderError):
+    """Report that a provider cannot satisfy the requested kind of search."""
+
+
+class SearchProviderExecutionError(SearchProviderError):
+    """Report a provider failure without exposing transport or credential details."""
+
+
+class SearchProviderTimeoutError(SearchProviderExecutionError):
+    """Report a bounded provider operation that did not finish before its deadline."""
+
+
 @runtime_checkable
 class GrocerySearchProvider(Protocol):
     """Search for validated grocery offers through one configured provider."""

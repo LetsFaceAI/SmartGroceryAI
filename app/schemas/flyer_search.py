@@ -27,6 +27,12 @@ class RawFlyerSearchRequest(BaseModel):
     postal_code: PostalCode = Field(
         description="US ZIP code or Canadian postal code used for local offers.",
     )
+    merchant_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        description="Optional store-name filter forwarded to the Flipp Actor.",
+    )
     # The Actor supports much larger values, but this service deliberately caps
     # each paid request to protect a small development account from accidental use.
     max_items: int = Field(
@@ -38,7 +44,7 @@ class RawFlyerSearchRequest(BaseModel):
 
     def to_tool_input(self) -> dict[str, Any]:
         """Build the explicit Actor payload using its published input field names."""
-        return {
+        payload: dict[str, Any] = {
             "mode": "search",
             "postalCode": self.postal_code,
             "query": self.query,
@@ -48,6 +54,9 @@ class RawFlyerSearchRequest(BaseModel):
             "includeCoupons": False,
             "maxItems": self.max_items,
         }
+        if self.merchant_name is not None:
+            payload["merchantName"] = self.merchant_name
+        return payload
 
 
 class RawFlyerSearchResult(BaseModel):
