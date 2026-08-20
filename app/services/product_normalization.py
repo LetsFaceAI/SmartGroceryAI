@@ -91,7 +91,10 @@ def normalize_product_name(product_name: str) -> str:
     Punctuation and word order remain unchanged because altering them would begin
     product matching rather than deterministic normalization.
     """
-    unicode_normalized = unicodedata.normalize("NFKC", product_name)
+    # Remove symbols before NFKC because compatibility normalization expands
+    # characters such as ™ into letters ("TM"), which would create false tokens.
+    without_noise = product_name.translate(_FORMATTING_NOISE)
+    unicode_normalized = unicodedata.normalize("NFKC", without_noise)
     without_noise = unicode_normalized.translate(_FORMATTING_NOISE)
     return " ".join(without_noise.casefold().split()).strip(_EDGE_NOISE)
 
