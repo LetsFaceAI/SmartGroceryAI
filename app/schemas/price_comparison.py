@@ -75,6 +75,18 @@ class UnitPriceUnit(StrEnum):
     PACK = "pack"
 
 
+# This table is the schema-level comparison contract. Calculation code may produce
+# these pairs, but validation must also reject impossible states created by another
+# caller or deserialized data.
+UNIT_PRICE_UNIT_BY_COMPARABLE_UNIT: dict[CanonicalUnit, UnitPriceUnit] = {
+    CanonicalUnit.GRAM: UnitPriceUnit.KILOGRAM,
+    CanonicalUnit.MILLILITRE: UnitPriceUnit.LITRE,
+    CanonicalUnit.EACH: UnitPriceUnit.ITEM,
+    CanonicalUnit.COUNT: UnitPriceUnit.ITEM,
+    CanonicalUnit.PACK: UnitPriceUnit.PACK,
+}
+
+
 class OfferPriceComparison(BaseModel):
     """Represent one normalized offer's readiness and exact unit price.
 
@@ -149,6 +161,14 @@ class OfferPriceComparison(BaseModel):
                 raise ValueError(
                     "Comparable offers require quantity, units, and unit_price."
                 )
+            comparable_unit = self.comparable_unit
+            unit_price_unit = self.unit_price_unit
+            assert comparable_unit is not None and unit_price_unit is not None
+            expected_unit_price_unit = UNIT_PRICE_UNIT_BY_COMPARABLE_UNIT.get(
+                comparable_unit
+            )
+            if unit_price_unit is not expected_unit_price_unit:
+                raise ValueError("unit_price_unit is invalid for the comparable_unit.")
             if (
                 self.original_offer.price_basis
                 in {PriceBasis.TOTAL_PACKAGE, PriceBasis.EACH}
@@ -244,16 +264,28 @@ class CheapestOfferSelection(BaseModel):
             ):
                 raise ValueError("Ranked offers must belong to comparisons.")
             if any(
-                comparison not in self.ranked_comparable_offers
-                for comparison in self.tied_cheapest_offers
-            ):
-                raise ValueError("Tied offers must belong to the ranked offers.")
-            if any(
-                comparison.unit_price != self.cheapest_offer.unit_price
-                for comparison in self.tied_cheapest_offers
+                earlier.unit_price is None
+                or later.unit_price is None
+                or earlier.unit_price > later.unit_price
+                for earlier, later in zip(
+                    self.ranked_comparable_offers,
+                    self.ranked_comparable_offers[1:],
+                    strict=False,
+                )
             ):
                 raise ValueError(
-                    "Tied offers must share the cheapest offer's unit price."
+                    "Ranked offers must be ordered by nondecreasing unit_price."
+                )
+            minimum_price = self.ranked_comparable_offers[0].unit_price
+            expected_ties = tuple(
+                comparison
+                for comparison in self.ranked_comparable_offers
+                if comparison.unit_price == minimum_price
+            )
+            if self.tied_cheapest_offers != expected_ties:
+                raise ValueError(
+                    "tied_cheapest_offers must exactly match the minimum-price "
+                    "offers in ranked order."
                 )
             return self
 

@@ -216,7 +216,7 @@ def test_selection_schema_rejects_false_tie_group() -> None:
     selection_data = selection.model_dump()
     selection_data["tied_cheapest_offers"] = [selection.ranked_comparable_offers[-1]]
 
-    with pytest.raises(ValidationError, match="must share the cheapest"):
+    with pytest.raises(ValidationError, match="exactly match the minimum-price"):
         CheapestOfferSelection.model_validate(selection_data)
 
 
