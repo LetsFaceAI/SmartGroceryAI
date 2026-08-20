@@ -87,6 +87,26 @@ class Settings(BaseSettings):
         le=600,
         validation_alias="APIFY_MCP_TOOL_TIMEOUT_SECONDS",
     )
+    # These limits are application policy, not Actor capabilities. Keeping them in
+    # validated configuration prevents future agent prompts from increasing spend.
+    search_max_items_per_request: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        validation_alias="SEARCH_MAX_ITEMS_PER_REQUEST",
+    )
+    search_max_external_actor_calls_per_request: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        validation_alias="SEARCH_MAX_EXTERNAL_ACTOR_CALLS_PER_REQUEST",
+    )
+    search_max_concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=5,
+        validation_alias="SEARCH_MAX_CONCURRENCY",
+    )
 
     @field_validator("apify_mcp_server_url")
     @classmethod

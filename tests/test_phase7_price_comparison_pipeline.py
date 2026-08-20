@@ -4,6 +4,7 @@ Every test uses real validation, normalization, matching, calculation, and
 selection code. No external service or probabilistic component is involved.
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -16,13 +17,15 @@ from app.schemas.price_comparison import (
     UnitPriceUnit,
 )
 from app.schemas.product_match import ProductMatchResult
-from app.schemas.product_offer import MeasurementUnit, ProductOffer
+from app.schemas.product_offer import MeasurementUnit, PriceBasis, ProductOffer
 from app.services.price_comparison import (
     calculate_unit_price,
     select_cheapest_offer,
 )
 from app.services.product_matcher import match_product
 from app.services.product_normalization import normalize_product_offer
+
+AS_OF = date(2026, 8, 20)
 
 
 def make_match(
@@ -45,6 +48,9 @@ def make_match(
         package_size=package_size,
         package_quantity=package_quantity,
         unit=unit,
+        price_basis=PriceBasis.TOTAL_PACKAGE,
+        valid_from=date(2026, 1, 1),
+        valid_until=date(2026, 12, 31),
         currency=currency,
         source=source,
     )
@@ -85,7 +91,7 @@ def test_unit_price_rules_use_exact_decimal_arithmetic(
     """Metric scale variants and discrete counts should share stable denominators."""
     match = make_match(package_size=package_size, unit=unit, price=price)
 
-    comparison = calculate_unit_price(match.product)
+    comparison = calculate_unit_price(match.product, as_of=AS_OF)
 
     assert comparison.status is PriceComparisonStatus.COMPARABLE
     assert comparison.unit_price == Decimal(expected_price)
@@ -110,7 +116,7 @@ def test_different_package_sizes_select_lowest_price_per_kilogram() -> None:
         source="fixture:large-coffee",
     )
 
-    selection = select_cheapest_offer("ground coffee", [small, large])
+    selection = select_cheapest_offer("ground coffee", [small, large], as_of=AS_OF)
 
     assert selection.status is CheapestOfferStatus.SELECTED
     assert selection.cheapest_offer is not None
@@ -141,6 +147,7 @@ def test_non_comparable_matches_do_not_hide_valid_offer() -> None:
     selection = select_cheapest_offer(
         "ground coffee",
         [unsupported, missing, valid],
+        as_of=AS_OF,
     )
 
     assert selection.status is CheapestOfferStatus.SELECTED
@@ -163,7 +170,9 @@ def test_no_comparable_offer_returns_clear_status() -> None:
         source="fixture:ounces",
     )
 
-    selection = select_cheapest_offer("ground coffee", [missing, unsupported])
+    selection = select_cheapest_offer(
+        "ground coffee", [missing, unsupported], as_of=AS_OF
+    )
 
     assert selection.status is CheapestOfferStatus.NO_COMPARABLE_OFFERS
     assert selection.cheapest_offer is None
@@ -187,7 +196,7 @@ def test_equal_unit_prices_return_ties_with_deterministic_winner() -> None:
         source="fixture:alpha-large",
     )
 
-    selection = select_cheapest_offer("ground coffee", [large, small])
+    selection = select_cheapest_offer("ground coffee", [large, small], as_of=AS_OF)
 
     assert selection.cheapest_offer is not None
     assert selection.cheapest_offer.original_offer.store == "Beta Market"
@@ -201,11 +210,13 @@ def test_selection_schema_rejects_false_tie_group() -> None:
     """A result cannot label a more expensive ranked offer as an exact tie."""
     cheaper = make_match(price="7.00", source="fixture:cheaper")
     expensive = make_match(price="8.00", source="fixture:expensive")
-    selection = select_cheapest_offer("ground coffee", [cheaper, expensive])
+    selection = select_cheapest_offer(
+        "ground coffee", [cheaper, expensive], as_of=AS_OF
+    )
     selection_data = selection.model_dump()
     selection_data["tied_cheapest_offers"] = [selection.ranked_comparable_offers[-1]]
 
-    with pytest.raises(ValidationError, match="must share the cheapest"):
+    with pytest.raises(ValidationError, match="exactly match the minimum-price"):
         CheapestOfferSelection.model_validate(selection_data)
 
 
@@ -222,7 +233,9 @@ def test_non_matching_offer_is_ignored_before_price_calculation() -> None:
         source="fixture:juice",
     )
 
-    selection = select_cheapest_offer("ground coffee", [unrelated, matching])
+    selection = select_cheapest_offer(
+        "ground coffee", [unrelated, matching], as_of=AS_OF
+    )
 
     assert unrelated.matched is False
     assert selection.ignored_non_matches == 1
@@ -240,7 +253,7 @@ def test_selection_rejects_match_results_for_another_request() -> None:
     )
 
     with pytest.raises(ValueError, match="must belong to the requested item"):
-        select_cheapest_offer("ground coffee", [milk_match])
+        select_cheapest_offer("ground coffee", [milk_match], as_of=AS_OF)
 
 
 def test_incompatible_units_or_currencies_are_not_ranked_together() -> None:
@@ -253,7 +266,7 @@ def test_incompatible_units_or_currencies_are_not_ranked_together() -> None:
         source="fixture:count-cad",
     )
 
-    selection = select_cheapest_offer("ground coffee", [mass, count])
+    selection = select_cheapest_offer("ground coffee", [mass, count], as_of=AS_OF)
 
     assert selection.status is CheapestOfferStatus.INCOMPATIBLE_COMPARISON_GROUPS
     assert selection.cheapest_offer is None
@@ -265,7 +278,9 @@ def test_different_currencies_are_not_ranked_together() -> None:
     canadian = make_match(currency="CAD", source="fixture:coffee-cad")
     american = make_match(currency="USD", source="fixture:coffee-usd")
 
-    selection = select_cheapest_offer("ground coffee", [canadian, american])
+    selection = select_cheapest_offer(
+        "ground coffee", [canadian, american], as_of=AS_OF
+    )
 
     assert selection.status is CheapestOfferStatus.INCOMPATIBLE_COMPARISON_GROUPS
     assert selection.cheapest_offer is None
@@ -284,7 +299,9 @@ def test_pack_and_item_counts_are_not_assumed_equivalent() -> None:
         source="fixture:packs",
     )
 
-    selection = select_cheapest_offer("ground coffee", [counted_items, packs])
+    selection = select_cheapest_offer(
+        "ground coffee", [counted_items, packs], as_of=AS_OF
+    )
 
     assert selection.status is CheapestOfferStatus.INCOMPATIBLE_COMPARISON_GROUPS
     assert selection.cheapest_offer is None

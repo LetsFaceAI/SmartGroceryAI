@@ -17,7 +17,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from app.core.config import get_settings
 from app.core.mcp import create_apify_mcp_client
 from app.schemas.flyer_search import RawFlyerSearchRequest, RawFlyerSearchResult
-from app.schemas.product_offer import ProductOffer
+from app.schemas.product_offer import MeasurementUnit, PriceBasis, ProductOffer
 from app.services.apify_dataset_reader import (
     ApifyDatasetReadError,
     extract_default_dataset_id,
@@ -46,6 +46,21 @@ FLIPP_FIELD_MAP: dict[str, str] = {
 _CANADIAN_POSTAL_CODE = re.compile(r"^[A-Z]\d[A-Z][ -]?\d[A-Z]\d$", re.IGNORECASE)
 _US_ZIP_CODE = re.compile(r"^\d{5}(?:-\d{4})?$")
 _RECORD_CONTAINER_KEYS = ("items", "results", "datasetItems", "dataset")
+_FLIPP_PRICE_QUALIFIER_MAP: dict[
+    str,
+    tuple[PriceBasis, MeasurementUnit | None],
+] = {
+    "each": (PriceBasis.EACH, None),
+    "ea": (PriceBasis.EACH, None),
+    "/lb": (PriceBasis.PER_WEIGHT, MeasurementUnit.POUND),
+    "per lb": (PriceBasis.PER_WEIGHT, MeasurementUnit.POUND),
+    "/kg": (PriceBasis.PER_WEIGHT, MeasurementUnit.KILOGRAM),
+    "per kg": (PriceBasis.PER_WEIGHT, MeasurementUnit.KILOGRAM),
+    "/l": (PriceBasis.PER_VOLUME, MeasurementUnit.LITRE),
+    "per l": (PriceBasis.PER_VOLUME, MeasurementUnit.LITRE),
+    "/ml": (PriceBasis.PER_VOLUME, MeasurementUnit.MILLILITRE),
+    "per ml": (PriceBasis.PER_VOLUME, MeasurementUnit.MILLILITRE),
+}
 
 
 class ApifyFlyerTransformationError(ValueError):
@@ -89,6 +104,29 @@ def _sale_flag(record: Mapping[str, object]) -> bool | None:
     if current == regular:
         return False
     return None
+
+
+def _map_flipp_price_qualifier(
+    record: Mapping[str, object],
+    mapped: dict[str, object],
+) -> None:
+    """Translate Flipp price wording into the provider-neutral offer contract."""
+    qualifier = record.get("priceQualifier")
+    if qualifier is None:
+        return
+    if not isinstance(qualifier, str):
+        raise ApifyFlyerTransformationError(
+            "Flipp field 'priceQualifier' must be text or null."
+        )
+
+    normalized = " ".join(qualifier.casefold().split())
+    price_basis, price_basis_unit = _FLIPP_PRICE_QUALIFIER_MAP.get(
+        normalized,
+        (PriceBasis.UNKNOWN, None),
+    )
+    mapped["priceBasis"] = price_basis
+    if price_basis_unit is not None:
+        mapped["priceBasisUnit"] = price_basis_unit
 
 
 def _parse_flipp_datetime(value: object) -> datetime | None:
@@ -176,6 +214,8 @@ def map_apify_flyer_record(
     sale_flag = _sale_flag(record)
     if sale_flag is not None:
         mapped["onSale"] = sale_flag
+
+    _map_flipp_price_qualifier(record, mapped)
 
     # A URL is preferred, but an Actor item ID is still a stable, traceable source
     # when a partial dataset row omits sourceUrl.

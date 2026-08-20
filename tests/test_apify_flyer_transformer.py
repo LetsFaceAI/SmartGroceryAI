@@ -12,7 +12,12 @@ from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.schemas.flyer_search import RawFlyerSearchRequest, RawFlyerSearchResult
-from app.schemas.product_offer import ProductOffer, PromotionStatus
+from app.schemas.product_offer import (
+    MeasurementUnit,
+    PriceBasis,
+    ProductOffer,
+    PromotionStatus,
+)
 from app.services.apify_flyer_transformer import (
     ApifyFlyerTransformationError,
     map_apify_flyer_record,
@@ -57,9 +62,40 @@ def test_transform_complete_saved_flyer_result() -> None:
     assert offer.regular_price == Decimal("3.99")
     assert offer.currency == "CAD"
     assert offer.promotion_status is PromotionStatus.SALE
+    assert offer.price_basis is PriceBasis.EACH
     assert offer.valid_from.isoformat() == "2026-08-20"
     assert offer.valid_until.isoformat() == "2026-08-26"
     assert offer.source == "https://example.invalid/flyer/cantaloupe"
+
+
+@pytest.mark.parametrize(
+    ("qualifier", "expected_basis", "expected_unit"),
+    [
+        ("each", PriceBasis.EACH, None),
+        ("per kg", PriceBasis.PER_WEIGHT, MeasurementUnit.KILOGRAM),
+        ("/L", PriceBasis.PER_VOLUME, MeasurementUnit.LITRE),
+        ("two for five dollars", PriceBasis.UNKNOWN, None),
+    ],
+)
+def test_flipp_transformer_maps_only_reliable_price_qualifiers(
+    qualifier: str,
+    expected_basis: PriceBasis,
+    expected_unit: MeasurementUnit | None,
+) -> None:
+    """Provider wording is interpreted only inside the Flipp-specific boundary."""
+    offer = map_apify_flyer_record(
+        {
+            "name": "Milk",
+            "merchantName": "Example Grocer",
+            "currentPrice": "3.00",
+            "priceQualifier": qualifier,
+            "sourceUrl": "fixture:qualifier",
+        },
+        postal_code="M5V 3A8",
+    )
+
+    assert offer.price_basis is expected_basis
+    assert offer.price_basis_unit is expected_unit
 
 
 def test_transform_partial_saved_flyer_result_uses_safe_defaults() -> None:
