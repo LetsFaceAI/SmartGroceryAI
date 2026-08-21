@@ -49,5 +49,11 @@ def test_coordinator_prompt_delegates_candidate_selection_to_model() -> None:
     assert "Do not call a store the closest or nearest" in (
         GROCERY_COORDINATOR_SYSTEM_PROMPT
     )
+    assert "Do not introduce or search for additional items" in (
+        GROCERY_COORDINATOR_SYSTEM_PROMPT
+    )
+    assert "do not make price or availability claims" in (
+        GROCERY_COORDINATOR_SYSTEM_PROMPT
+    )
     assert "ranking as authoritative" not in GROCERY_COORDINATOR_SYSTEM_PROMPT
     assert "Do not recalculate prices" not in GROCERY_COORDINATOR_SYSTEM_PROMPT

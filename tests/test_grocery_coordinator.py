@@ -18,8 +18,9 @@ from app.agents.grocery_coordinator import (
     create_request_scoped_grocery_coordinator,
 )
 from app.core.config import Settings
-from app.schemas.shopping import ShoppingItem, ShoppingRequest
+from app.schemas.shopping import ShoppingConstraint, ShoppingItem, ShoppingRequest
 from app.services.search_request_policy import ExternalActorCallBudget
+from app.tools.grocery_search import create_find_flyer_deals_tool
 
 
 class ToolCallingFakeChatModel(FakeMessagesListChatModel):
@@ -117,14 +118,27 @@ def test_request_scoped_coordinators_receive_independent_budgets() -> None:
         search_max_external_actor_calls_per_request=1,
         search_max_concurrency=1,
     )  # type: ignore[call-arg]
+    grounded_item = ShoppingItem(
+        name="milk",
+        quantity=2,
+        unit="cartons",
+        notes="Keep the requested 2% variety.",
+        constraints=(ShoppingConstraint(value="2%"),),
+    )
     request = ShoppingRequest(
-        items=[ShoppingItem(name="milk")],
+        items=[grounded_item],
     )
     model = FakeMessagesListChatModel(
         responses=[AIMessage(content="unused")],
     )
 
-    with patch("app.agents.grocery_coordinator.ApifyFlippProvider") as provider_factory:
+    with (
+        patch("app.agents.grocery_coordinator.ApifyFlippProvider") as provider_factory,
+        patch(
+            "app.agents.grocery_coordinator.create_find_flyer_deals_tool",
+            wraps=create_find_flyer_deals_tool,
+        ) as tool_factory,
+    ):
         first_agent = create_request_scoped_grocery_coordinator(
             request,
             model=model,
@@ -138,6 +152,9 @@ def test_request_scoped_coordinators_receive_independent_budgets() -> None:
 
     assert first_agent is not second_agent
     assert provider_factory.call_count == 2
+    assert tool_factory.call_count == 2
+    assert tool_factory.call_args_list[0].kwargs["requested_items"] == (grounded_item,)
+    assert tool_factory.call_args_list[1].kwargs["requested_items"] == (grounded_item,)
 
     first_provider_call = provider_factory.call_args_list[0]
     second_provider_call = provider_factory.call_args_list[1]

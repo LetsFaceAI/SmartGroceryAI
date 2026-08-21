@@ -11,6 +11,11 @@ from app.schemas.offer_candidates import (
 )
 from app.schemas.product_offer import PriceBasis, ProductOffer
 from app.schemas.search_provider import GrocerySearchRequest
+from app.schemas.shopping import (
+    ConstraintRequirement,
+    ShoppingConstraint,
+    ShoppingItem,
+)
 from app.services.grocery_search import GrocerySearchService
 from app.tools.grocery_search import create_find_flyer_deals_tool
 
@@ -34,9 +39,8 @@ class FakeGrocerySearchService(GrocerySearchService):
         return self._candidates
 
 
-@pytest.mark.anyio
-async def test_tool_returns_unranked_validated_candidates() -> None:
-    """The tool should expose candidates without selecting a winner."""
+def make_candidates() -> FlyerOfferCandidateSet:
+    """Create one unranked candidate set for tool-boundary tests."""
     offer = ProductOffer(
         product_name="Crown Broccoli",
         store="Nations Fresh Foods",
@@ -46,7 +50,7 @@ async def test_tool_returns_unranked_validated_candidates() -> None:
         valid_until=date(2026, 8, 20),
         source="fixture:nations",
     )
-    candidates = FlyerOfferCandidateSet(
+    return FlyerOfferCandidateSet(
         requested_item_name="broccoli",
         postal_code="L5B 0G7",
         as_of=AS_OF,
@@ -59,8 +63,39 @@ async def test_tool_returns_unranked_validated_candidates() -> None:
             ),
         ),
     )
-    service = FakeGrocerySearchService(candidates)
-    grocery_tool = create_find_flyer_deals_tool(service)
+
+
+def test_tool_requires_at_least_one_grounded_item() -> None:
+    """The factory must not create a tool with an unrestricted item scope."""
+    service = FakeGrocerySearchService(make_candidates())
+
+    with pytest.raises(ValueError, match="at least one requested item"):
+        create_find_flyer_deals_tool(
+            service,
+            requested_items=(),
+        )
+
+
+@pytest.mark.anyio
+async def test_tool_preserves_grounded_item_when_searching_candidates() -> None:
+    """The provider request should retain every validated shopping-item detail."""
+    requested_item = ShoppingItem(
+        name="broccoli",
+        quantity=2,
+        unit="crowns",
+        notes="Use only the requested organic variety.",
+        constraints=(
+            ShoppingConstraint(
+                value="organic",
+                requirement=ConstraintRequirement.REQUIRED,
+            ),
+        ),
+    )
+    service = FakeGrocerySearchService(make_candidates())
+    grocery_tool = create_find_flyer_deals_tool(
+        service,
+        requested_items=(requested_item,),
+    )
 
     result = await grocery_tool.ainvoke(
         {
@@ -75,7 +110,16 @@ async def test_tool_returns_unranked_validated_candidates() -> None:
 
     assert len(service.calls) == 1
     request, as_of = service.calls[0]
-    assert request.item.name == "broccoli"
+    assert request.item is requested_item
+    assert request.item.quantity == 2
+    assert request.item.unit == "crowns"
+    assert request.item.notes == "Use only the requested organic variety."
+    assert request.item.constraints == (
+        ShoppingConstraint(
+            value="organic",
+            requirement=ConstraintRequirement.REQUIRED,
+        ),
+    )
     assert request.postal_code == "L5B 0G7"
     assert request.store is None
     assert isinstance(as_of, date)
@@ -91,3 +135,59 @@ async def test_tool_returns_unranked_validated_candidates() -> None:
     assert offer_payload[0]["store"] == "Nations Fresh Foods"
     assert offer_payload[0]["price"] == "1.29"
     assert offer_payload[0]["validity_status"] == "active"
+
+
+@pytest.mark.anyio
+async def test_tool_rejects_item_outside_grounded_request() -> None:
+    """A hallucinated item must not reach the provider search boundary."""
+    service = FakeGrocerySearchService(make_candidates())
+    grocery_tool = create_find_flyer_deals_tool(
+        service,
+        requested_items=(ShoppingItem(name="broccoli"),),
+    )
+
+    result = await grocery_tool.ainvoke(
+        {
+            "item_name": "milk",
+            "postal_code": "L5B 0G7",
+            "store": None,
+        }
+    )
+
+    assert service.calls == []
+    assert result["status"] == "unsupported_item"
+    assert result["requested_item_name"] == "milk"
+    assert result["offers"] == []
+    assert "No external search was performed" in str(result["reason"])
+
+
+@pytest.mark.anyio
+async def test_tool_rejects_ambiguous_grounded_item_name() -> None:
+    """Same-name items with different constraints require explicit resolution."""
+    service = FakeGrocerySearchService(make_candidates())
+    grocery_tool = create_find_flyer_deals_tool(
+        service,
+        requested_items=(
+            ShoppingItem(
+                name="milk",
+                constraints=(ShoppingConstraint(value="2%"),),
+            ),
+            ShoppingItem(
+                name="milk",
+                constraints=(ShoppingConstraint(value="lactose-free"),),
+            ),
+        ),
+    )
+
+    result = await grocery_tool.ainvoke(
+        {
+            "item_name": "milk",
+            "postal_code": "L5B 0G7",
+            "store": None,
+        }
+    )
+
+    assert service.calls == []
+    assert result["status"] == "unsupported_item"
+    assert result["offers"] == []
+    assert "multiple requested items" in str(result["reason"])

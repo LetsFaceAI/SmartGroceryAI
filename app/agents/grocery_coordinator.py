@@ -52,7 +52,10 @@ def create_request_scoped_grocery_coordinator(
         timeout_seconds=resolved_settings.apify_mcp_tool_timeout_seconds,
     )
     service = GrocerySearchService(provider)
-    flyer_tool = create_find_flyer_deals_tool(service)
+    flyer_tool = create_find_flyer_deals_tool(
+        service,
+        requested_items=search_plan.items,
+    )
 
     resolved_model = (
         model if model is not None else create_chat_model(resolved_settings)
