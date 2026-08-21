@@ -97,3 +97,35 @@ async def test_service_searches_and_selects_lowest_unit_price() -> None:
     assert selection.cheapest_offer is not None
     assert selection.cheapest_offer.original_offer.store == "Warehouse Market"
     assert selection.cheapest_offer.unit_price == Decimal("7.000000000000")
+
+
+@pytest.mark.anyio
+async def test_service_returns_validated_candidates_without_ranking() -> None:
+    """Candidate retrieval should preserve validated offers and provenance."""
+    request = GrocerySearchRequest(
+        item=ShoppingItem(name="ground coffee"),
+        postal_code="M5V 3A8",
+    )
+    offers = (
+        make_coffee_offer(
+            store="Corner Market",
+            price="4.00",
+            package_size="500",
+            unit=MeasurementUnit.GRAM,
+        ),
+        make_coffee_offer(
+            store="Warehouse Market",
+            price="7.00",
+            package_size="1",
+            unit=MeasurementUnit.KILOGRAM,
+        ),
+    )
+    provider = FakeProvider(offers)
+    service = GrocerySearchService(provider)
+
+    result = await service.search_offers(request)
+
+    assert provider.requests == [request]
+    assert result.request is request
+    assert result.offers == offers
+    assert result.provenance.provider_name == "fixture"

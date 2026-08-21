@@ -4,7 +4,10 @@ from datetime import date
 
 from app.providers.base import GrocerySearchProvider
 from app.schemas.price_comparison import CheapestOfferSelection
-from app.schemas.search_provider import GrocerySearchRequest
+from app.schemas.search_provider import (
+    GrocerySearchRequest,
+    GrocerySearchResult,
+)
 from app.services.price_comparison import select_cheapest_offer
 from app.services.product_matcher import build_product_match_request, match_product
 from app.services.product_normalization import normalize_product_offer
@@ -15,6 +18,13 @@ class GrocerySearchService:
 
     def __init__(self, provider: GrocerySearchProvider) -> None:
         self._provider = provider
+
+    async def search_offers(
+        self,
+        request: GrocerySearchRequest,
+    ) -> GrocerySearchResult:
+        """Return validated provider offers without selecting a winner."""
+        return await self._provider.search(request)
 
     async def compare_offers(
         self,
