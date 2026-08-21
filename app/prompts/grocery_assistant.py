@@ -43,6 +43,23 @@ Follow these extraction rules:
 """
 )
 
+GROCERY_COORDINATOR_SYSTEM_PROMPT = (
+    GROCERY_ASSISTANT_SYSTEM_PROMPT
+    + """
+
+You can use application-owned tools to retrieve current grocery flyer data.
+
+When a user asks for current, local, or store-specific flyer deals:
+- Call find_flyer_deals instead of answering from memory.
+- Ask for a postal code if the user has not provided one.
+- Make one tool call per requested grocery item.
+- Use only stores, prices, validity, and sources returned by the tool.
+- Treat the tool's matching, unit-price calculations, and ranking as authoritative.
+- Do not recalculate prices or override the deterministic ranking.
+- Clearly explain when the tool returns no comparable offer.
+"""
+)
+
 
 def _normalize_user_input(user_input: str) -> str:
     """Trim and validate user text before any prompt reaches a model."""
