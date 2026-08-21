@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -22,7 +22,10 @@ FIXTURE_DIRECTORY = Path(__file__).parent / "fixtures" / "apify"
 
 def load_fixture(filename: str) -> dict[str, Any]:
     """Read saved Actor metadata without contacting Apify."""
-    return json.loads((FIXTURE_DIRECTORY / filename).read_text(encoding="utf-8"))
+    return cast(
+        dict[str, Any],
+        json.loads((FIXTURE_DIRECTORY / filename).read_text(encoding="utf-8")),
+    )
 
 
 def make_client() -> Mock:
@@ -52,7 +55,7 @@ def test_extract_default_dataset_id_rejects_missing_metadata() -> None:
 @pytest.mark.anyio
 async def test_fetch_dataset_items_invokes_read_only_tool_once() -> None:
     """The helper call should be bounded and preserve its structured artifact."""
-    response = {"artifact": {"structured_content": {"items": []}}}
+    response: dict[str, Any] = {"artifact": {"structured_content": {"items": []}}}
     dataset_tool = Mock(spec=BaseTool)
     dataset_tool.name = APIFY_DATASET_ITEMS_TOOL_NAME
     dataset_tool.ainvoke = AsyncMock(return_value=response)

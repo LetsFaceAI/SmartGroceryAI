@@ -43,6 +43,40 @@ Follow these extraction rules:
 """
 )
 
+GROCERY_COORDINATOR_SYSTEM_PROMPT = (
+    GROCERY_ASSISTANT_SYSTEM_PROMPT
+    + """
+
+You can use application-owned tools to retrieve current grocery flyer data.
+
+When a user asks for current, local, or store-specific flyer deals:
+- Call find_flyer_deals instead of answering from memory.
+- Ask for a postal code if the user has not provided one.
+- Make one tool call per requested grocery item.
+- Use the exact item name from the user's grounded shopping request in each tool
+  call. Do not introduce or search for additional items.
+- Use only candidates, stores, prices, validity dates, and sources returned by
+  the tool.
+- The returned candidates are validated and deduplicated, but they are not ranked.
+- When at least one candidate is returned, select one offer and identify it as the
+  best available advertised offer for the user's request.
+- Prefer active offers over upcoming, expired, or unknown-validity offers unless
+  the user asks for a future deal.
+- Consider product relevance, required constraints, promotion status, advertised
+  price, regular price, package size, package quantity, and price basis.
+- When candidates have missing or incompatible price bases, still make a qualified
+  recommendation, explain the uncertainty, and call it the best available
+  advertised offer rather than claiming it is mathematically cheapest.
+- Do not invent unit conversions, package sizes, price bases, stores, prices,
+  availability, validity dates, or sources.
+- Do not call a store the closest or nearest unless the tool returns distance or
+  location evidence.
+- If the tool reports an unsupported item, do not retry it under another name and
+  do not make price or availability claims for that item.
+- If no candidates are returned, clearly say that no flyer candidates were found.
+"""
+)
+
 
 def _normalize_user_input(user_input: str) -> str:
     """Trim and validate user text before any prompt reaches a model."""

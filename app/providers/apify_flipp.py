@@ -70,7 +70,8 @@ def _build_flipp_query(request: GrocerySearchRequest) -> str:
     followed by the requested item name. Optional constraints, quantity, and
     free-form notes are intentionally not used to narrow discovery because doing
     so could exclude useful candidates. The complete ``ShoppingItem`` remains on
-    the shared result for deterministic matching after retrieval.
+    the shared result so downstream orchestration can preserve the user's request
+    while evaluating validated candidates.
     """
     candidate_parts = [
         constraint.value

@@ -40,12 +40,12 @@ def test_saved_mcp_fixture_flows_through_phase7_1_boundaries() -> None:
     cantaloupe_request = build_product_match_request(
         ShoppingItem(
             name="cantaloupe",
-            constraints=[
+            constraints=(
                 ShoppingConstraint(
                     value="organic",
                     requirement=ConstraintRequirement.OPTIONAL,
-                )
-            ],
+                ),
+            ),
         )
     )
     cantaloupe_match = match_product(cantaloupe_request, products[0])

@@ -6,9 +6,10 @@ these tests catch contract mismatches without spending Apify credit.
 """
 
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -28,7 +29,10 @@ ACTOR_TOOL_NAME = "crawlerbros--flipp-grocery-deals-scraper"
 def load_fixture(filename: str) -> dict[str, Any]:
     """Read a committed MCP-shaped response; this helper performs no network I/O."""
     fixture_path = FIXTURE_DIRECTORY / filename
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(
+        dict[str, Any],
+        json.loads(fixture_path.read_text(encoding="utf-8")),
+    )
 
 
 async def run_offline_pipeline(
@@ -82,8 +86,8 @@ async def test_pipeline_maps_valid_mcp_response_to_product_offer() -> None:
     assert offer.price == Decimal("2.99")
     assert offer.regular_price == Decimal("3.99")
     assert offer.promotion_status is PromotionStatus.SALE
-    assert offer.valid_from.isoformat() == "2026-08-20"
-    assert offer.valid_until.isoformat() == "2026-08-26"
+    assert offer.valid_from == date(2026, 8, 20)
+    assert offer.valid_until == date(2026, 8, 26)
 
 
 @pytest.mark.anyio

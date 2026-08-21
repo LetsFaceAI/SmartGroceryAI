@@ -43,7 +43,10 @@ class SettingsTest(unittest.TestCase):
 
         for overrides in invalid_overrides:
             with self.subTest(overrides=overrides), self.assertRaises(ValidationError):
-                Settings(_env_file=None, **overrides)  # type: ignore[call-arg]
+                Settings(
+                    _env_file=None,  # type: ignore[call-arg]
+                    **overrides,  # type: ignore[arg-type]
+                )
 
 
 if __name__ == "__main__":

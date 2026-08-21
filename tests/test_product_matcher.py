@@ -1,5 +1,7 @@
 """Focused tests for conservative deterministic product-name matching."""
 
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
@@ -19,7 +21,7 @@ def make_product(product_name: str) -> NormalizedProduct:
     offer = ProductOffer(
         product_name=product_name,
         store="Example Grocer",
-        price="3.99",
+        price=Decimal("3.99"),
         source=f"fixture:{product_name}",
     )
     return normalize_product_offer(offer)

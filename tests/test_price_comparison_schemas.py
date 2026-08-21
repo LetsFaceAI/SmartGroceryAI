@@ -32,8 +32,8 @@ def make_product(
     offer = ProductOffer(
         product_name="Ground Coffee",
         store=store,
-        price=price,
-        package_size=package_size,
+        price=Decimal(price),
+        package_size=(Decimal(package_size) if package_size is not None else None),
         unit=unit,
         price_basis=PriceBasis.TOTAL_PACKAGE,
         valid_from=date(2026, 1, 1),
@@ -269,7 +269,7 @@ def test_comparison_rejects_mismatched_source_offer() -> None:
     other_offer = ProductOffer(
         product_name="Ground Coffee",
         store="Other Store",
-        price="7.99",
+        price=Decimal("7.99"),
         source="fixture:other-coffee",
     )
 

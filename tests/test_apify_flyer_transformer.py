@@ -4,7 +4,7 @@ import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -31,7 +31,10 @@ FIXTURE_DIRECTORY = Path(__file__).parent / "fixtures" / "apify"
 def load_fixture(filename: str) -> dict[str, Any]:
     """Load a committed Actor-shaped response without contacting Apify."""
     fixture_path = FIXTURE_DIRECTORY / filename
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(
+        dict[str, Any],
+        json.loads(fixture_path.read_text(encoding="utf-8")),
+    )
 
 
 def make_result(raw_response: object) -> RawFlyerSearchResult:
@@ -63,8 +66,8 @@ def test_transform_complete_saved_flyer_result() -> None:
     assert offer.currency == "CAD"
     assert offer.promotion_status is PromotionStatus.SALE
     assert offer.price_basis is PriceBasis.EACH
-    assert offer.valid_from.isoformat() == "2026-08-20"
-    assert offer.valid_until.isoformat() == "2026-08-26"
+    assert offer.valid_from == date(2026, 8, 20)
+    assert offer.valid_until == date(2026, 8, 26)
     assert offer.source == "https://example.invalid/flyer/cantaloupe"
 
 
