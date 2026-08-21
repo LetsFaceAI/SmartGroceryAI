@@ -15,7 +15,10 @@ from app.services.search_request_policy import (
 
 def make_settings(**overrides: object) -> Settings:
     """Create isolated settings without reading the developer's environment."""
-    return Settings(_env_file=None, **overrides)  # type: ignore[call-arg]
+    return Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        **overrides,  # type: ignore[arg-type]
+    )
 
 
 def test_plan_deduplicates_equivalent_items_and_combines_quantity() -> None:
@@ -26,13 +29,13 @@ def test_plan_deduplicates_equivalent_items_and_combines_quantity() -> None:
                 name="Milk",
                 quantity=1,
                 unit="carton",
-                constraints=[ShoppingConstraint(value="2%")],
+                constraints=(ShoppingConstraint(value="2%"),),
             ),
             ShoppingItem(
                 name="milk",
                 quantity=2,
                 unit="CARTON",
-                constraints=[ShoppingConstraint(value="2%")],
+                constraints=(ShoppingConstraint(value="2%"),),
             ),
             ShoppingItem(name="Eggs"),
         ],
@@ -54,7 +57,7 @@ def test_deduplication_does_not_merge_different_constraints() -> None:
             ShoppingItem(name="milk"),
             ShoppingItem(
                 name="milk",
-                constraints=[ShoppingConstraint(value="organic")],
+                constraints=(ShoppingConstraint(value="organic"),),
             ),
         ]
     )

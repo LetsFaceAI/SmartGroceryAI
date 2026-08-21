@@ -46,9 +46,13 @@ async def test_coordinator_executes_tool_call_and_returns_final_answer() -> None
         postal_code: str,
         store: str | None = None,
     ) -> str:
-        """Search local grocery flyers and compare current deals for one item."""
+        """Retrieve validated flyer candidates for one item."""
         calls.append((item_name, postal_code, store))
-        return "Warehouse Market: CAD 7.00 per kg."
+        return (
+            '{"requested_item_name":"ground coffee","offers":['
+            '{"store":"Warehouse Market","price":"7.00","currency":"CAD",'
+            '"price_basis":"unknown","validity_status":"active"}]}'
+        )
 
     model = ToolCallingFakeChatModel(
         responses=[
@@ -68,8 +72,9 @@ async def test_coordinator_executes_tool_call_and_returns_final_answer() -> None
             ),
             AIMessage(
                 content=(
-                    "Warehouse Market has the cheapest ground coffee "
-                    "at CAD 7.00 per kg."
+                    "Warehouse Market is the best available advertised offer "
+                    "at CAD 7.00. The missing price basis means this is not a "
+                    "verified unit-price comparison."
                 )
             ),
         ]
@@ -92,10 +97,17 @@ async def test_coordinator_executes_tool_call_and_returns_final_answer() -> None
         ToolMessage,
         AIMessage,
     ]
-    assert messages[2].content == "Warehouse Market: CAD 7.00 per kg."
-    assert messages[-1].content == (
-        "Warehouse Market has the cheapest ground coffee at CAD 7.00 per kg."
+    assert messages[2].content == (
+        '{"requested_item_name":"ground coffee","offers":['
+        '{"store":"Warehouse Market","price":"7.00","currency":"CAD",'
+        '"price_basis":"unknown","validity_status":"active"}]}'
     )
+    assert messages[-1].content == (
+        "Warehouse Market is the best available advertised offer "
+        "at CAD 7.00. The missing price basis means this is not a "
+        "verified unit-price comparison."
+    )
+
 
 def test_request_scoped_coordinators_receive_independent_budgets() -> None:
     """Each shopping request should own a fresh paid-call allowance."""
@@ -112,9 +124,7 @@ def test_request_scoped_coordinators_receive_independent_budgets() -> None:
         responses=[AIMessage(content="unused")],
     )
 
-    with patch(
-        "app.agents.grocery_coordinator.ApifyFlippProvider"
-    ) as provider_factory:
+    with patch("app.agents.grocery_coordinator.ApifyFlippProvider") as provider_factory:
         first_agent = create_request_scoped_grocery_coordinator(
             request,
             model=model,

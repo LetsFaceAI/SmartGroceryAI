@@ -5,6 +5,7 @@ from langchain.messages import HumanMessage, SystemMessage
 
 from app.prompts.grocery_assistant import (
     GROCERY_ASSISTANT_SYSTEM_PROMPT,
+    GROCERY_COORDINATOR_SYSTEM_PROMPT,
     SHOPPING_REQUEST_EXTRACTION_SYSTEM_PROMPT,
     build_grocery_messages,
     build_shopping_request_messages,
@@ -38,3 +39,15 @@ def test_build_shopping_request_messages_adds_extraction_rules() -> None:
     assert "request-wide preferences" in str(messages[0].content)
     assert isinstance(messages[1], HumanMessage)
     assert messages[1].content == "I prefer organic 2% milk."
+
+
+def test_coordinator_prompt_delegates_candidate_selection_to_model() -> None:
+    """The coordinator should select candidates while qualifying uncertainty."""
+    assert "best available advertised offer" in GROCERY_COORDINATOR_SYSTEM_PROMPT
+    assert "they are not ranked" in GROCERY_COORDINATOR_SYSTEM_PROMPT
+    assert "missing or incompatible price bases" in (GROCERY_COORDINATOR_SYSTEM_PROMPT)
+    assert "Do not call a store the closest or nearest" in (
+        GROCERY_COORDINATOR_SYSTEM_PROMPT
+    )
+    assert "ranking as authoritative" not in GROCERY_COORDINATOR_SYSTEM_PROMPT
+    assert "Do not recalculate prices" not in GROCERY_COORDINATOR_SYSTEM_PROMPT

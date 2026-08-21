@@ -20,16 +20,19 @@ def create_find_flyer_deals_tool(
         postal_code: str,
         store: str | None = None,
     ) -> dict[str, object]:
-        """Search local grocery flyers and compare current deals for one item."""
+        """Retrieve validated local flyer candidates for model-guided selection."""
         request = GrocerySearchRequest(
             item=ShoppingItem(name=item_name),
             postal_code=postal_code,
             store=store,
         )
-        selection = await service.compare_offers(
+        candidates = await service.search_offer_candidates(
             request,
             as_of=date.today(),
         )
-        return selection.model_dump(mode="json")
+        return candidates.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
 
     return find_flyer_deals

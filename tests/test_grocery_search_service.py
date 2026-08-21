@@ -1,12 +1,16 @@
-"""Offline tests for application-owned grocery search orchestration."""
+"""Offline tests for grocery offer retrieval and candidate curation."""
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
-from app.schemas.price_comparison import CheapestOfferStatus
-from app.schemas.product_offer import MeasurementUnit, PriceBasis, ProductOffer
+from app.schemas.offer_candidates import FlyerOfferValidity
+from app.schemas.product_offer import (
+    MeasurementUnit,
+    PriceBasis,
+    ProductOffer,
+)
 from app.schemas.search_provider import (
     GrocerySearchRequest,
     GrocerySearchResult,
@@ -44,80 +48,107 @@ class FakeProvider:
         )
 
 
-def make_coffee_offer(
+def make_broccoli_offer(
     *,
     store: str,
     price: str,
-    package_size: str,
-    unit: MeasurementUnit,
+    source: str,
+    valid_from: date = date(2026, 8, 14),
+    valid_until: date = date(2026, 8, 20),
+    price_basis: PriceBasis = PriceBasis.UNKNOWN,
+    price_basis_unit: MeasurementUnit | None = None,
 ) -> ProductOffer:
-    """Build one active, comparable fixture offer."""
+    """Build one realistic broccoli fixture returned by the provider."""
     return ProductOffer(
-        product_name="Ground Coffee",
+        product_name="Crown Broccoli",
         store=store,
         price=Decimal(price),
-        package_size=Decimal(package_size),
-        unit=unit,
-        price_basis=PriceBasis.TOTAL_PACKAGE,
-        valid_from=date(2026, 8, 1),
-        valid_until=date(2026, 8, 31),
-        source=f"fixture:{store}",
+        price_basis=price_basis,
+        price_basis_unit=price_basis_unit,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        source=source,
     )
 
 
 @pytest.mark.anyio
-async def test_service_searches_and_selects_lowest_unit_price() -> None:
-    """The service should rank normalized prices instead of shelf prices."""
+async def test_service_builds_unranked_deduplicated_candidates() -> None:
+    """The service should curate candidates without calculating a winner."""
     request = GrocerySearchRequest(
-        item=ShoppingItem(name="ground coffee"),
-        postal_code="M5V 3A8",
+        item=ShoppingItem(name="broccoli"),
+        postal_code="L5B 0G7",
     )
     provider = FakeProvider(
         (
-            make_coffee_offer(
-                store="Corner Market",
-                price="4.00",
-                package_size="500",
-                unit=MeasurementUnit.GRAM,
+            make_broccoli_offer(
+                store="Nations Fresh Foods",
+                price="1.29",
+                source="fixture:nations:first",
             ),
-            make_coffee_offer(
-                store="Warehouse Market",
-                price="7.00",
-                package_size="1",
-                unit=MeasurementUnit.KILOGRAM,
+            make_broccoli_offer(
+                store="Nations Fresh Foods",
+                price="1.29",
+                source="fixture:nations:duplicate",
+            ),
+            make_broccoli_offer(
+                store="Bestco Foodmart",
+                price="1.49",
+                price_basis=PriceBasis.PER_WEIGHT,
+                price_basis_unit=MeasurementUnit.POUND,
+                source="fixture:bestco",
+            ),
+            make_broccoli_offer(
+                store="Btrust Supermarket",
+                price="1.28",
+                valid_from=date(2026, 8, 21),
+                valid_until=date(2026, 8, 27),
+                source="fixture:btrust",
             ),
         )
     )
     service = GrocerySearchService(provider)
 
-    selection = await service.compare_offers(request, as_of=AS_OF)
+    candidates = await service.search_offer_candidates(
+        request,
+        as_of=AS_OF,
+    )
 
     assert provider.requests == [request]
-    assert selection.status is CheapestOfferStatus.SELECTED
-    assert selection.cheapest_offer is not None
-    assert selection.cheapest_offer.original_offer.store == "Warehouse Market"
-    assert selection.cheapest_offer.unit_price == Decimal("7.000000000000")
+    assert candidates.requested_item_name == "broccoli"
+    assert candidates.postal_code == "L5B 0G7"
+    assert candidates.provider_name == "fixture"
+    assert len(candidates.offers) == 3
+
+    offers_by_store = {offer.store: offer for offer in candidates.offers}
+    assert (
+        offers_by_store["Nations Fresh Foods"].validity_status
+        is FlyerOfferValidity.ACTIVE
+    )
+    assert offers_by_store["Nations Fresh Foods"].source == ("fixture:nations:first")
+    assert offers_by_store["Bestco Foodmart"].price_basis is PriceBasis.PER_WEIGHT
+    assert offers_by_store["Bestco Foodmart"].price_basis_unit is MeasurementUnit.POUND
+    assert (
+        offers_by_store["Btrust Supermarket"].validity_status
+        is FlyerOfferValidity.UPCOMING
+    )
+
+    payload = candidates.model_dump(mode="json")
+    assert "cheapest_offer" not in payload
+    assert "ranked_offers" not in payload
 
 
 @pytest.mark.anyio
-async def test_service_returns_validated_candidates_without_ranking() -> None:
-    """Candidate retrieval should preserve validated offers and provenance."""
+async def test_service_can_return_validated_provider_result_directly() -> None:
+    """Low-level retrieval should retain the validated provider boundary."""
     request = GrocerySearchRequest(
-        item=ShoppingItem(name="ground coffee"),
-        postal_code="M5V 3A8",
+        item=ShoppingItem(name="broccoli"),
+        postal_code="L5B 0G7",
     )
     offers = (
-        make_coffee_offer(
-            store="Corner Market",
-            price="4.00",
-            package_size="500",
-            unit=MeasurementUnit.GRAM,
-        ),
-        make_coffee_offer(
-            store="Warehouse Market",
-            price="7.00",
-            package_size="1",
-            unit=MeasurementUnit.KILOGRAM,
+        make_broccoli_offer(
+            store="Nations Fresh Foods",
+            price="1.29",
+            source="fixture:nations",
         ),
     )
     provider = FakeProvider(offers)

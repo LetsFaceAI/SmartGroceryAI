@@ -44,8 +44,8 @@ def make_match(
     offer = ProductOffer(
         product_name=product_name,
         store=store,
-        price=price,
-        package_size=package_size,
+        price=Decimal(price),
+        package_size=(Decimal(package_size) if package_size is not None else None),
         package_quantity=package_quantity,
         unit=unit,
         price_basis=PriceBasis.TOTAL_PACKAGE,
@@ -313,8 +313,8 @@ def test_invalid_offer_fails_before_it_can_enter_selection() -> None:
         ProductOffer(
             product_name="Ground Coffee",
             store="Invalid Store",
-            price="0",
-            package_size="1",
+            price=Decimal("0"),
+            package_size=Decimal("1"),
             unit=MeasurementUnit.KILOGRAM,
             source="fixture:invalid",
         )

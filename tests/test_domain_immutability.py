@@ -16,8 +16,8 @@ def test_offer_cannot_be_mutated_after_normalization_and_comparison() -> None:
     offer = ProductOffer(
         product_name="Ground Coffee",
         store="Example Grocer",
-        price="8.00",
-        package_size="1",
+        price=Decimal("8.00"),
+        package_size=Decimal("1"),
         unit=MeasurementUnit.KILOGRAM,
         price_basis=PriceBasis.TOTAL_PACKAGE,
         valid_from=date(2026, 8, 1),

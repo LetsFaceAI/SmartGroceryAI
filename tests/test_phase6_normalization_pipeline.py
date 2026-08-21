@@ -28,10 +28,10 @@ def test_complete_offer_normalizes_and_matches_end_to_end() -> None:
         product_name="  Organic® 2%   Milk ",
         brand="Example Dairy™",
         store="Walmart Canada",
-        package_size="1.5",
+        package_size=Decimal("1.5"),
         unit=MeasurementUnit.LITRE,
-        price="4.49",
-        regular_price="5.49",
+        price=Decimal("4.49"),
+        regular_price=Decimal("5.49"),
         promotion_status=PromotionStatus.SALE,
         source="fixture:milk-001",
     )
@@ -58,8 +58,8 @@ def test_partial_offer_preserves_unknown_values_and_still_matches() -> None:
     offer = ProductOffer(
         product_name="Large Eggs",
         store="Local Market",
-        price="3.99",
-        package_size="12",
+        price=Decimal("3.99"),
+        package_size=Decimal("12"),
         source="fixture:eggs-001",
     )
 
@@ -85,7 +85,7 @@ def test_invalid_offer_fails_before_normalization_or_matching() -> None:
         ProductOffer(
             product_name="Milk",
             store="Example Grocer",
-            price="0",
+            price=Decimal("0"),
             source="fixture:invalid-price",
         )
 
@@ -121,7 +121,7 @@ def test_non_matching_offer_returns_explicit_none_result() -> None:
     offer = ProductOffer(
         product_name="Orange Juice",
         store="Example Grocer",
-        price="4.99",
+        price=Decimal("4.99"),
         source="fixture:orange-juice",
     )
 

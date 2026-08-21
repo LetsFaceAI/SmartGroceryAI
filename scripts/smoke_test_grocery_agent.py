@@ -91,11 +91,13 @@ async def main() -> None:
     configure_logging(level="WARNING")
 
     prompt = (
-        f"Find the current cheapest flyer deal for "
+        f"Find the best available advertised flyer offer for "
         f"{validated_search.item.name} near postal code "
         f"{validated_search.postal_code}. "
         "Use find_flyer_deals exactly once. "
-        "Base your answer only on the tool result."
+        "Base your answer only on the tool result. "
+        "When at least one candidate is returned, choose one offer and clearly "
+        "state any uncertainty caused by missing or incompatible price bases."
     )
 
     try:

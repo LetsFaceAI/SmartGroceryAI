@@ -50,10 +50,10 @@ def make_offer(
     return ProductOffer(
         product_name=product_name,
         store=store,
-        price=price,
+        price=Decimal(price),
         price_basis=price_basis,
         price_basis_unit=price_basis_unit,
-        package_size=package_size,
+        package_size=(Decimal(package_size) if package_size is not None else None),
         unit=unit,
         valid_from=valid_from,
         valid_until=valid_until,
@@ -68,12 +68,12 @@ def test_match_request_preserves_item_context_and_constraint_strength() -> None:
         quantity=2,
         unit="cartons",
         notes="Must be lactose free and 2% for dietary needs",
-        constraints=[
+        constraints=(
             ShoppingConstraint(
                 value="organic",
                 requirement=ConstraintRequirement.OPTIONAL,
-            )
-        ],
+            ),
+        ),
     )
 
     request = build_product_match_request(
@@ -118,12 +118,12 @@ def test_explicit_optional_constraint_wins_over_inferred_note_text() -> None:
         ShoppingItem(
             name="milk",
             notes="Organic if available",
-            constraints=[
+            constraints=(
                 ShoppingConstraint(
                     value="organic",
                     requirement=ConstraintRequirement.OPTIONAL,
-                )
-            ],
+                ),
+            ),
         )
     )
 
@@ -150,7 +150,7 @@ def test_missing_required_constraint_is_uncertain_not_equivalent() -> None:
     request = build_product_match_request(
         ShoppingItem(
             name="milk",
-            constraints=[ShoppingConstraint(value="organic")],
+            constraints=(ShoppingConstraint(value="organic"),),
         )
     )
     product = normalize_product_offer(make_offer("2% Milk"))
@@ -172,7 +172,7 @@ def test_protected_required_qualifiers_are_never_silently_dropped(
     request = build_product_match_request(
         ShoppingItem(
             name="milk",
-            constraints=[ShoppingConstraint(value=constraint)],
+            constraints=(ShoppingConstraint(value=constraint),),
         )
     )
 
@@ -187,12 +187,12 @@ def test_missing_optional_constraint_does_not_block_safe_match() -> None:
     request = build_product_match_request(
         ShoppingItem(
             name="milk",
-            constraints=[
+            constraints=(
                 ShoppingConstraint(
                     value="organic",
                     requirement=ConstraintRequirement.OPTIONAL,
-                )
-            ],
+                ),
+            ),
         )
     )
 
@@ -252,7 +252,7 @@ def test_selection_rejects_results_with_different_constraint_context() -> None:
     constrained_request = build_product_match_request(
         ShoppingItem(
             name="milk",
-            constraints=[ShoppingConstraint(value="organic")],
+            constraints=(ShoppingConstraint(value="organic"),),
         )
     )
     constrained = match_product(
