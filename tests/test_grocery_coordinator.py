@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Sequence
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -12,7 +13,13 @@ from langchain_core.language_models.fake_chat_models import (
 )
 from langchain_core.runnables import Runnable
 
-from app.agents.grocery_coordinator import create_grocery_coordinator_agent
+from app.agents.grocery_coordinator import (
+    create_grocery_coordinator_agent,
+    create_request_scoped_grocery_coordinator,
+)
+from app.core.config import Settings
+from app.schemas.shopping import ShoppingItem, ShoppingRequest
+from app.services.search_request_policy import ExternalActorCallBudget
 
 
 class ToolCallingFakeChatModel(FakeMessagesListChatModel):
@@ -89,3 +96,56 @@ async def test_coordinator_executes_tool_call_and_returns_final_answer() -> None
     assert messages[-1].content == (
         "Warehouse Market has the cheapest ground coffee at CAD 7.00 per kg."
     )
+
+def test_request_scoped_coordinators_receive_independent_budgets() -> None:
+    """Each shopping request should own a fresh paid-call allowance."""
+    settings = Settings(
+        _env_file=None,
+        apify_mcp_tool_timeout_seconds=15,
+        search_max_external_actor_calls_per_request=1,
+        search_max_concurrency=1,
+    )  # type: ignore[call-arg]
+    request = ShoppingRequest(
+        items=[ShoppingItem(name="milk")],
+    )
+    model = FakeMessagesListChatModel(
+        responses=[AIMessage(content="unused")],
+    )
+
+    with patch(
+        "app.agents.grocery_coordinator.ApifyFlippProvider"
+    ) as provider_factory:
+        first_agent = create_request_scoped_grocery_coordinator(
+            request,
+            model=model,
+            settings=settings,
+        )
+        second_agent = create_request_scoped_grocery_coordinator(
+            request,
+            model=model,
+            settings=settings,
+        )
+
+    assert first_agent is not second_agent
+    assert provider_factory.call_count == 2
+
+    first_provider_call = provider_factory.call_args_list[0]
+    second_provider_call = provider_factory.call_args_list[1]
+
+    first_budget = first_provider_call.kwargs["call_budget"]
+    second_budget = second_provider_call.kwargs["call_budget"]
+
+    assert isinstance(first_budget, ExternalActorCallBudget)
+    assert isinstance(second_budget, ExternalActorCallBudget)
+    assert first_budget is not second_budget
+    assert first_budget.remaining_calls == 1
+    assert second_budget.remaining_calls == 1
+
+    assert first_provider_call.kwargs["timeout_seconds"] == 15
+    assert second_provider_call.kwargs["timeout_seconds"] == 15
+
+    with first_budget.actor_call():
+        pass
+
+    assert first_budget.remaining_calls == 0
+    assert second_budget.remaining_calls == 1
